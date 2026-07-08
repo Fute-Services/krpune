@@ -51,3 +51,22 @@ jobs:
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Windows Build' }}
           files: release/*.exe
           fail_on_unmatched_files: true
+
+      - name: Show download link in the build summary
+        # After every build this prints a clickable download link on the
+        # Actions run page (the "Summary" tab), so there's no need to hunt for it.
+        shell: bash
+        run: |
+          TAG='${{ startsWith(github.ref, ''refs/tags/'') && github.ref_name || ''latest'' }}'
+          EXE=$(ls release/*.exe | head -1)
+          NAME=$(basename "$EXE" | sed 's/ /./g')
+          URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}"
+          {
+            echo "## ✅ Windows build ready"
+            echo ""
+            echo "**Download the installer:**"
+            echo ""
+            echo "👉 [$NAME]($URL)"
+            echo ""
+            echo "Release page: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          } >> "$GITHUB_STEP_SUMMARY"

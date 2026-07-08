@@ -1,0 +1,40 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+dist.zip
+dist/
+build/
+node_modules/
+
+# Electron build output (electron-builder) — large binaries, never commit
+release/
+release
+out/
+*.exe
+*.blockmap
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

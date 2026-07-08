@@ -1,0 +1,768 @@
+/* =========================================
+   PAGE
+   ========================================= */
+.home-page {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+/* PDF Modal Styling */
+.pdf-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000; /* All elements-kum mela irukanum */
+  backdrop-filter: blur(5px);
+}
+
+.pdf-modal-content {
+  width: 90%;
+  height: 92%;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+}
+
+.pdf-modal-header {
+  padding: 12px 20px;
+  background: #f8f9fa;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ddd;
+}
+
+.pdf-modal-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.pdf-close-btn {
+  background: #ff4d4d;
+  color: white;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 12px;
+  border-radius: 6px;
+  transition: 0.2s;
+}
+
+.pdf-close-btn:hover {
+  background: #cc0000;
+}
+
+.pdf-container {
+  flex: 1;
+  width: 100%;
+  background: #525659; /* PDF viewer typical background */
+}
+
+.pdf-container iframe {
+  border: none;
+}
+
+/* =========================================
+   HEADER
+   ========================================= */
+.header-wrapper {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  pointer-events: none;
+  box-sizing: border-box;
+  margin-left: 80px;
+  padding-right: 10%;
+}
+
+.white-header {
+  background: white;
+  width: 115px;
+  height: 130px;
+  border-radius: 0px 0px 40px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.white-header1 {
+  background: white;
+  width: 115px;
+  height: 130px;
+  border-radius: 0px 0px 40px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-logo {
+  height: 80px;
+  object-fit: contain;
+}
+
+.header-logo1 {
+  height: 80px;
+  object-fit: contain;
+}
+
+.header-text {
+  color: #1e40af;
+  font-weight: 600;
+}
+
+/* =========================================
+   RIGHT SIDE BUTTON STACK
+   ========================================= */
+.right-controls {
+  position: fixed;
+  top: 50%;
+  right: 24px;
+  transform: translateY(-50%);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+
+  z-index: 1000;
+}
+
+
+right-controls1{
+  position: relative;
+  top: 80%;
+  right: 24px;
+  transform: translateY(-50%);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+
+  z-index: 1000;
+
+}
+
+/* FLOATING BUTTON */
+.floating-btn {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  background: linear-gradient(200deg, #105ca8a6 10.17%, #062442b0 91.74%);
+  border: none;
+  color: white;
+
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.floating-btn-1 {
+  width: 120px;
+  height: 50px;
+  flex-shrink: 0;
+  margin-top: 32%;
+  margin-left: 5%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10%;
+  background: linear-gradient(164deg, rgba(200, 243, 255, 0.54) 11.01%, rgba(128, 149, 255, 0.54) 95.38%);
+  border: 1px solid rgba(181, 172, 172, 0.571);
+  color: white;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.floating-btn:hover {
+  transform: scale(1.1);
+}
+
+.floating-btn-1:hover {
+  transform: scale(1.1);
+}
+
+/* =========================================
+   CUSTOM TOOLTIP
+   — MUI Tooltip replace பண்ணினோம்
+   — Icon மேலே வரும், background இல்லாம
+   ========================================= */
+.custom-tooltip-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Tooltip label — icon-க்கு மேலே */
+.custom-tooltip-text {
+  position: absolute;
+  bottom: calc(100% + 8px); /* icon top-க்கு 8px மேலே */
+  left: 50%;
+  transform: translateX(-50%);
+
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+
+  /* NO background — fully transparent */
+  background: transparent;
+  padding: 0;
+
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 1100;
+}
+@media (max-width: 425px) {
+  .custom-tooltip-text {
+    left: auto;
+    right: 110%; /* icon left side */
+    transform: none;
+    text-align: right;
+  }
+}
+
+/* Hover-ல மட்டும் show ஆகும் */
+.custom-tooltip-wrapper:hover .custom-tooltip-text {
+  opacity: 1;
+}
+@media (max-width: 768px) {
+  .custom-tooltip-wrapper:active .custom-tooltip-text {
+    opacity: 1;
+  }
+}
+
+/* =========================================
+   SEARCH
+   ========================================= */
+.search-container {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+
+  border-radius: 50px;
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+  transition: width 0.4s ease;
+  align-self: center;
+}
+
+.search-container.expanded {
+  width: 280px;
+  border-radius: 32px;
+}
+
+.search-icon {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: white;
+  background: linear-gradient(200deg, #105ca8a6 10.17%, #06244228 91.74%);
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.search-container input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: linear-gradient(168deg, #105CA8 10.17%, #062442 70.74%);
+  color: white;
+  padding: 0 16px;
+  opacity: 0;
+  width: 0;
+  transition: opacity 0.3s ease, width 0.4s ease;
+  pointer-events: none;
+}
+
+.search-container.expanded input {
+  opacity: 1;
+  width: auto;
+  pointer-events: auto;
+}
+
+.search-container input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+/* =========================================
+   KEY METRICS VERTICAL TIMELINE
+   ========================================= */
+
+/* Backdrop — outside click-ல close ஆகும் */
+.timeline-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 499;
+  background: transparent;
+}
+
+/*
+  Layout order (left → right):
+    text  |  icon-wrapper  |  horizontal-line  |  vertical-line
+
+  right: 100px → floating buttons-க்கு left-ல இருக்கும்
+  The .timeline-line is at right: 0 of this container.
+*/
+.key-metrics-timeline {
+  position: fixed;
+  top: 50%;
+  right: 100px;
+  transform: translateY(-50%);
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 28px;
+
+  z-index: 500;
+  pointer-events: none;
+}
+
+/* Vertical line
+   top: 23px  = first icon center (icon height 46px / 2)
+   bottom: 23px = last icon center
+   → Line exactly connects all icon centers
+*/
+.timeline-line {
+  position: absolute;
+  right: 0;
+  top: 23px;
+  bottom: 23px;
+  width: 3px;
+  background: rgba(139, 175, 192, 0.547);
+  border-radius: 4px;
+  z-index: 1;
+}
+
+/* Each row: text → icon-wrapper → horizontal-line */
+.metric-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  pointer-events: all;
+  cursor: default;
+}
+
+/* Text label */
+.metric-item span {
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-align: right;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* Icon wrapper — blue circle */
+.metric-icon-wrapper {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  position: relative;
+  z-index: 2;
+  border: 2px solid transparent;
+  /* background: linear-gradient(200deg, #105ca8cc 10%, #062442cc 91%); */
+  /* box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); */
+}
+
+/* Last item — visible white border ring */
+/* .metric-item--last .metric-icon-wrapper {
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.12),
+              0 4px 16px rgba(0, 0, 0, 0.35);
+} */
+
+.metric-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+/* Horizontal connector — icon ↔ vertical line */
+.horizontal-line {
+  width: 22px;
+  height: 2px;
+  flex-shrink: 0;
+  background: rgba(139, 175, 192, 0.547);
+}
+
+/* =========================================
+   RESPONSIVE
+   ========================================= */
+
+/* TV / Large screens */
+@media (min-width: 1600px) {
+  .white-header,
+  .white-header1 {
+    width: 130px;
+    height: 130px;
+    border-radius: 0px 0px 50px 50px;
+  }
+
+  .header-logo,
+  .header-logo1 {
+    height: 90px;
+  }
+
+  .right-controls {
+    right: 50px;
+    gap: 30px;
+  }
+
+  .floating-btn,
+  .floating-btn-1 {
+    width: 80px;
+    height: 80px;
+    font-size: 1.5rem;
+  }
+
+  .search-container,
+  .search-icon {
+    width: 80px;
+    height: 80px;
+  }
+
+  .search-container.expanded {
+    width: 320px;
+  }
+
+  .key-metrics-timeline {
+    right: 150px;
+    gap: 34px;
+  }
+
+  /* icon 54px → top/bottom: 27px */
+  .timeline-line {
+    top: 27px;
+    bottom: 27px;
+  }
+
+  .metric-icon-wrapper {
+    width: 54px;
+    height: 54px;
+  }
+
+  .metric-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .metric-item span {
+    font-size: 1.05rem;
+  }
+
+  .horizontal-line {
+    width: 28px;
+  }
+}
+
+/* Tablet */
+@media (max-width: 768px) {
+  .header-wrapper {
+    margin-right: 1%;
+  }
+
+  .white-header,
+  .white-header1 {
+    width: 90px;
+    height: 105px;
+        border-radius: 0px 0px 30px 30px;
+   
+  }
+
+  .white-header1 {
+    margin-right: 30px;
+  }
+
+  .header-logo {
+    height: 70px;
+  }
+
+  .right-controls {
+    right: 20px;
+    gap: 16px;
+  }
+
+  .floating-btn,
+  .floating-btn-1,
+  .search-container,
+  .search-icon {
+    width: 54px;
+    height: 54px;
+  }
+
+  .search-container.expanded {
+    width: 260px;
+  }
+
+  .key-metrics-timeline {
+    right: 86px;
+    gap: 22px;
+  }
+
+  /* icon 40px → top/bottom: 20px */
+  .timeline-line {
+    top: 20px;
+    bottom: 20px;
+  }
+
+  .metric-item span {
+    font-size: 0.88rem;
+  }
+
+  .metric-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+
+  .metric-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .horizontal-line {
+    width: 18px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 430px) {
+  .header-wrapper {
+    justify-content: center;
+    padding-right: 0;
+    margin-left: 20px;
+  }
+
+  .white-header,
+  .white-header1 {
+    width: 80px;
+    height: 90px;
+    border-radius: 0px 0px 30px 30px;
+    margin-left: 170px;
+  }
+
+  .header-logo {
+    height: 55px;
+  }
+
+  .right-controls {
+    right: 12px;
+    gap: 12px;
+  }
+
+  .floating-btn,
+  .floating-btn-1,
+  .search-container,
+  .search-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .search-container.expanded {
+    width: 220px;
+  }
+
+  .search-container input::placeholder {
+    font-size: 12px;
+  }
+
+  .key-metrics-timeline {
+    right: 72px;
+    gap: 18px;
+  }
+
+  /* icon 36px → top/bottom: 18px */
+  .timeline-line {
+    top: 18px;
+    bottom: 18px;
+  }
+
+  .metric-item span {
+    font-size: 0.82rem;
+  }
+
+  .metric-icon-wrapper {
+    width: 36px;
+    height: 36px;
+  }
+
+  .metric-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .horizontal-line {
+    width: 14px;
+  }
+}
+
+/* =========================================
+   LEGACY METRICS PANEL (reference only)
+   ========================================= */
+.metrics-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  z-index: 999;
+}
+
+.metrics-panel {
+  position: fixed;
+  right: 110px;
+  top: 50%;
+  width: 380px;
+  max-height: 80vh;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transform: translateY(-50%);
+  z-index: 1001;
+  overflow: hidden;
+}
+
+@keyframes slideInRight {
+  0% {
+    transform: translateX(100%) translateY(-50%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) translateY(-50%);
+    opacity: 1;
+  }
+}
+
+.slide-in {
+  animation: slideInRight 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.metrics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 24px 0 24px;
+  margin-bottom: 8px;
+}
+
+.metrics-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(135deg, #ffffff 0%, #a0a0a0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.metrics-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.metrics-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  transform: scale(1.1);
+}
+
+.metrics-list {
+  list-style: none;
+  padding: 0 24px 24px;
+  margin: 0;
+  max-height: calc(80vh - 140px);
+  overflow-y: auto;
+}
+
+.metrics-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+  color: white;
+  font-size: 1rem;
+}
+
+.metrics-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  padding-left: 8px;
+  border-radius: 8px;
+}

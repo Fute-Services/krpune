@@ -1,0 +1,14 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Serve existing files directly (images, css, js)
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^ - [L]
+
+  # Ignore directories and pass to index.html to allow React Router to handle the route,
+  # This prevents 403 errors when a route has the same name as a physical folder.
+  
+  # Forward all other requests to index.html
+  RewriteRule ^ index.html [L]
+</IfModule>

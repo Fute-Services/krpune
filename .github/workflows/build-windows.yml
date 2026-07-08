@@ -32,9 +32,17 @@ jobs:
 
       - name: Build Windows installer
         # vite build + electron-builder --win nsis  (same as `npm run app:dist`)
+        #
+        # Code signing: if the WINDOWS_CERT_BASE64 / WINDOWS_CERT_PASSWORD repo
+        # secrets are set, electron-builder picks them up automatically via the
+        # CSC_LINK / CSC_KEY_PASSWORD env vars and signs the installer + exe.
+        # If the secrets are empty, the build stays unsigned (as before) and
+        # still succeeds — so nothing breaks until the certificate is added.
         run: npm run app:dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
 
       - name: Upload installer as workflow artifact
         uses: actions/upload-artifact@v4

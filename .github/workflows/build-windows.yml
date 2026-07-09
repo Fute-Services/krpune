@@ -61,6 +61,16 @@ jobs:
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Windows Build' }}
           files: release/*.exe
           fail_on_unmatched_files: true
+          # Put a big clickable download link right in the release description so
+          # there's no need to expand the "Assets" section to find the installer.
+          body: |
+            ## ⬇️ Download the Windows app
+
+            ### 👉 [**Click here to download KRC Pune (Windows installer, ~1 GB)**](https://github.com/${{ github.repository }}/releases/download/latest/KRC.Pune.Setup.0.0.0.exe)
+
+            After it downloads, double-click the `.exe` to install.
+
+            You can share this same link with anyone — it always points to the latest build.
 
       - name: Show download link in the build summary
         # After every build this prints a clickable download link on the

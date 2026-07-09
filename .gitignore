@@ -38,3 +38,6 @@ out/
 *.njsproj
 *.sln
 *.sw?
+
+# Windows / editor junk
+Thumbs.db

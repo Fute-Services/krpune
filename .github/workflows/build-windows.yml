@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true   # pull the real .mp4 videos (stored via Git LFS), not pointer files
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

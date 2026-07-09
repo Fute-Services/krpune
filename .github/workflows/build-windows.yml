@@ -67,7 +67,7 @@ jobs:
         # Actions run page (the "Summary" tab), so there's no need to hunt for it.
         shell: bash
         run: |
-          TAG='${{ startsWith(github.ref, ''refs/tags/'') && github.ref_name || ''latest'' }}'
+          TAG='${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}'
           EXE=$(ls release/*.exe | head -1)
           NAME=$(basename "$EXE" | sed 's/ /./g')
           URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}"

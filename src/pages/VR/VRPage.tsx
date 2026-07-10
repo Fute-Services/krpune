@@ -66,8 +66,14 @@ export default function Vr() {
 
         img.onclick = () => {
             // pannellum crossfades between scenes via `sceneFadeDuration` below,
-            // so no manual overlay is needed.
-            viewerRef.current?.loadScene(h.createTooltipArgs.next);
+            // so no manual overlay is needed. Pass hfov 120 so the next scene
+            // also opens fully zoomed OUT (never carries over a zoomed-in view).
+            viewerRef.current?.loadScene(
+                h.createTooltipArgs.next,
+                "same",
+                "same",
+                120
+            );
             setCurrentScene(h.createTooltipArgs.next);
         };
     };
@@ -75,9 +81,37 @@ export default function Vr() {
     // 🔥 INIT VIEWER ONCE ONLY
     useEffect(() => {
         let intervalId: any;
+        let resizeObserver: ResizeObserver | null = null;
+        const timers: any[] = [];
+
+        // Force pannellum to recompute its WebGL viewport and repaint. This is
+        // what kills the intermittent BLACK SCREEN: the viewer gets created
+        // while the page is still mid route-crossfade (opacity/GPU-composited),
+        // so its first WebGL frame can come out black. Re-running resize() after
+        // the animation settles makes it paint correctly — no need to leave and
+        // come back to the page anymore.
+        const forceResize = () => {
+            try {
+                viewerRef.current?.resize?.();
+            } catch (e) {
+                /* viewer torn down mid-timer — ignore */
+            }
+        };
 
         const checkAndInit = () => {
-            if (window.pannellum && currentScene && !viewerRef.current) {
+            const el = document.getElementById("pan-container");
+
+            // Only init once pannellum is loaded, we have a scene, no viewer yet,
+            // AND the container actually has a real size (a 0×0 container would
+            // give the WebGL canvas a 0×0 viewport = permanent black).
+            if (
+                window.pannellum &&
+                currentScene &&
+                !viewerRef.current &&
+                el &&
+                el.clientWidth > 0 &&
+                el.clientHeight > 0
+            ) {
                 const scene = scenes[currentScene];
                 if (!scene) return;
 
@@ -90,6 +124,13 @@ export default function Vr() {
                         autoRotate: -5,
                         autoRotateInactivityDelay: 1000,
                         showControls: false,
+                        // Open every scene fully zoomed OUT (wide view). The user
+                        // zooms in themselves with the + button if they want a
+                        // closer look; it should never start zoomed in.
+                        hfov: 120,
+                        maxHfov: 120,
+                        // Still allow zooming in for detail on the high-res panoramas.
+                        minHfov: 40,
                     },
 
                     scenes: Object.keys(scenes).reduce((acc: any, key) => {
@@ -113,6 +154,18 @@ export default function Vr() {
                 });
 
                 viewerRef.current.on("error", () => setError(true));
+                // Repaint once the panorama is ready...
+                viewerRef.current.on("load", forceResize);
+                // ...and again across the route-crossfade window (~400ms) so a
+                // frame rendered mid-animation is always corrected afterwards.
+                timers.push(setTimeout(forceResize, 100));
+                timers.push(setTimeout(forceResize, 500));
+                timers.push(setTimeout(forceResize, 900));
+                // Any later layout/size settle also triggers a clean repaint.
+                if ("ResizeObserver" in window) {
+                    resizeObserver = new ResizeObserver(forceResize);
+                    resizeObserver.observe(el);
+                }
 
                 if (intervalId) clearInterval(intervalId);
             }
@@ -120,12 +173,16 @@ export default function Vr() {
 
         checkAndInit();
 
+        // Keep polling until the viewer actually initialises (covers the case
+        // where pannellum or the container size isn't ready on the first tick).
         if (!viewerRef.current && currentScene) {
             intervalId = setInterval(checkAndInit, 100);
         }
 
         return () => {
             if (intervalId) clearInterval(intervalId);
+            if (resizeObserver) resizeObserver.disconnect();
+            timers.forEach(clearTimeout);
         };
     }, [scenes, currentScene]);
 

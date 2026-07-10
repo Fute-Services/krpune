@@ -271,11 +271,9 @@
 // };
 
 // export default Home;
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import ThemeToggle from '../../components/DayNightToggle/DayNightToggle';
 import LocationMap from '../Location/index';
-import dayBg from '../../assets/day.jpg';
-import nightBg from '../../assets/night.jpg';
 import logo from '../../assets/logo.png';
 import { useNavigate } from "react-router-dom";
 import blueprint from '../../assets/raheja_blueprint_new.jpeg';
@@ -300,11 +298,6 @@ const Home = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [showMetrics, setShowMetrics] = useState(false);
 
-  useEffect(() => {
-    const preloadImg = new Image();
-    preloadImg.src = isNight ? dayBg : nightBg;
-  }, [isNight]);
-
   const toggleTheme = () => {
     setIsNight(!isNight);
   };
@@ -316,15 +309,27 @@ const Home = () => {
   ];
 
   return (
-    <div
-      className="home-page"
-      style={{
-        backgroundImage:
-          activeView === 'Location'
-            ? 'none'
-            : `url(${isNight ? import.meta.env.BASE_URL + "media/home/C02_2.jpg_vcclaz.jpg" : import.meta.env.BASE_URL + "media/home/day_x1f_cwkyrz.png"})`
-      }}
-    >
+    <div className="home-page">
+      {/* Day / Night background crossfade layers */}
+      {activeView !== 'Location' && (
+        <>
+          <div
+            className="home-bg"
+            style={{
+              backgroundImage: `url(${import.meta.env.BASE_URL}media/home/day_x1f_cwkyrz.png)`,
+              opacity: isNight ? 0 : 1,
+            }}
+          />
+          <div
+            className="home-bg"
+            style={{
+              backgroundImage: `url(${import.meta.env.BASE_URL}media/home/C02_2.jpg_vcclaz.jpg)`,
+              opacity: isNight ? 1 : 0,
+            }}
+          />
+        </>
+      )}
+
       {/* Location Map */}
       {activeView === 'Location' && (
         <LocationMap onViewChange={setActiveView} />

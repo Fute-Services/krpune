@@ -11,6 +11,18 @@
   background-position: center;
   background-repeat: no-repeat;
 }
+
+/* Day / Night background layers — opacity crossfade for a smooth theme switch */
+.home-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: opacity 0.8s ease;
+  pointer-events: none;
+}
 /* PDF Modal Styling */
 .pdf-modal-overlay {
   position: fixed;

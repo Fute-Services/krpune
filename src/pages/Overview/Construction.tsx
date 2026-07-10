@@ -11,7 +11,6 @@ export default function Construction() {
                 src={`${import.meta.env.BASE_URL}media/videos/construction.mp4`}
                 className="absolute inset-0 w-full h-full object-cover"
                 autoPlay
-                muted
                 loop
                 playsInline
                 controls

@@ -8,6 +8,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
+    icon: path.join(__dirname, '..', 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -19,6 +20,10 @@ function createWindow() {
       // that restriction. Safe here: no remote content is ever loaded.
       webSecurity: false,
       allowRunningInsecureContent: true,
+      // Let the construction / walkthrough videos autoplay WITH sound.
+      // Chromium blocks unmuted autoplay unless there's a user gesture; in this
+      // kiosk we want audio on by default, so drop the gesture requirement.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 

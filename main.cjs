@@ -33,4 +33,22 @@ function createWindow() {
   // (e.g. the Teams video-call button does window.location.href = 'https://...').
   // Keep the SPA loaded; hand the URL to the system browser instead.
   win.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('file
+    if (!url.startsWith('file://')) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+
+  win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});

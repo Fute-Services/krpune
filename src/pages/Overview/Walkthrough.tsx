@@ -11,7 +11,6 @@ export default function Walkthrough() {
                 src={`${import.meta.env.BASE_URL}media/videos/walkthrough.mp4`}
                 className="absolute inset-0 w-full h-full object-cover"
                 autoPlay
-                muted
                 loop
                 playsInline
                 controls

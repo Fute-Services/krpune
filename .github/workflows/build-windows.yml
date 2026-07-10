@@ -30,6 +30,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        working-directory: code
         run: npm ci
 
       - name: Build Windows installer
@@ -40,6 +41,7 @@ jobs:
         # CSC_LINK / CSC_KEY_PASSWORD env vars and signs the installer + exe.
         # If the secrets are empty, the build stays unsigned (as before) and
         # still succeeds — so nothing breaks until the certificate is added.
+        working-directory: code
         run: npm run app:dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: KRC-Pune-Windows-Installer
-          path: release/*.exe
+          path: code/release/*.exe
           if-no-files-found: error
 
       - name: Delete old "latest" release so the new one shows a fresh date
@@ -72,7 +74,7 @@ jobs:
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Windows Build' }}
-          files: release/*.exe
+          files: code/release/*.exe
           fail_on_unmatched_files: true
           # Put a big clickable download link right in the release description so
           # there's no need to expand the "Assets" section to find the installer.
@@ -91,7 +93,7 @@ jobs:
         shell: bash
         run: |
           TAG='${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}'
-          EXE=$(ls release/*.exe | head -1)
+          EXE=$(ls code/release/*.exe | head -1)
           NAME=$(basename "$EXE" | sed 's/ /./g')
           URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}"
           {

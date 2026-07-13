@@ -255,7 +255,7 @@ export default function GalleryPage() {
                 stretch: 80,
                 depth: 200,
                 modifier: 1,
-                slideShadows: true,
+                slideShadows: false, // shadows dulled the images — off for full-vibrancy
             }}
             navigation={{
                 nextEl: '.custom-next',
@@ -268,11 +268,14 @@ export default function GalleryPage() {
                 <SwiperSlide key={index} className="w-full h-full overflow-hidden">
                     <div className="relative w-full h-full">
                         <img 
-                            src={img.url || img.image} 
-                            alt={img.title} 
-                            className="w-full h-full object-cover" 
+                            src={img.url || img.image}
+                            alt={img.title}
+                            className="w-full h-full object-cover"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60" />
+                        {/* Only a light darkening at the very bottom so the title
+                            stays readable — no more full-image dark overlay that
+                            made every photo look dull. */}
+                        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/55 to-transparent" />
                     </div>
                 </SwiperSlide>
             ))}
@@ -328,7 +331,7 @@ export default function GalleryPage() {
     <style tsx global>{`
         .swiper-slide {
             transition: transform 1s cubic-bezier(0.2, 1, 0.3, 1), opacity 0.8s ease !important;
-            opacity: 0.4;
+            opacity: 0.7;
         }
         .swiper-slide-active {
             opacity: 1 !important;

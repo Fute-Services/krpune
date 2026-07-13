@@ -1659,7 +1659,11 @@ export default function UnitPlanPage() {
                             lg:max-w-[98%] lg:max-h-[95vh] /* Laptop (lg): Untouched original size */
                             xl:max-w-[98%] xl:max-h-[98vh]
                             2xl:max-w-[100%] 2xl:max-h-[98vh]
-                            mt-[12vh] lg:mr-[25vh] ml-[-10%] md:ml-[-10%] lg:ml-0"
+                            /* mr-[25vh] shifted the image left (a right margin on a
+                               centered flex item pushes it left), so on wide xl/2xl
+                               monitors the left edge ran off-screen. Reduce the shift
+                               on big screens so it stays centered; lg left untouched. */
+                            mt-[12vh] lg:mr-[25vh] xl:mr-[10vh] 2xl:mr-0 ml-[-10%] md:ml-[-10%] lg:ml-0"
                         style={{
                             // Offsets are baked directly into the transform!
                             transform: `translate3d(${position.x - (isLowerGround ? -80 : 0)}px, ${position.y - (isLowerGround ? 120 : 0)}px, 0) scale(${zoom})`,

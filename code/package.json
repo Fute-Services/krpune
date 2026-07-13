@@ -2,6 +2,12 @@
   "name": "navbar-demo",
   "private": true,
   "version": "0.0.0",
+  "description": "KRC Pune — VR/amenities experience app",
+  "author": "Fute Services",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fute-Services/krpune.git"
+  },
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -11,7 +17,7 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "vite build && electron .",
-    "app:dist": "vite build && electron-builder --win nsis"
+    "app:dist": "vite build && electron-builder --win nsis --publish never"
   },
   "build": {
     "appId": "com.krc.pune",

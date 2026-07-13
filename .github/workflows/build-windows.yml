@@ -28,6 +28,7 @@ jobs:
         with:
           node-version: 22   # 20 is deprecated on GitHub runners; 22 is current LTS
           cache: npm
+          cache-dependency-path: code/package-lock.json   # lock file lives in code/, not repo root
 
       - name: Install dependencies
         working-directory: code

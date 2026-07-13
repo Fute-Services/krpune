@@ -13,6 +13,9 @@ declare global {
 export default function Vr() {
     const navigate = useNavigate();
     const viewerRef = useRef<any>(null);
+    // This instance's OWN panorama container. We target it by ref (not by a
+    // shared id) so the viewer never mounts into a stale/duplicate container.
+    const containerRef = useRef<HTMLDivElement>(null);
 
     // ── Guards that kill the intermittent BLACK SCREEN ──
     // isTransitioning: while a scene is crossfading (loadScene in flight) we
@@ -148,7 +151,12 @@ export default function Vr() {
         };
 
         const checkAndInit = () => {
-            const el = document.getElementById("pan-container");
+            // Target THIS component's own container element (via ref), never a
+            // shared id. During route crossfades AnimatePresence briefly keeps
+            // the old VR page mounted, so getElementById("pan-container") could
+            // return the OLD, exiting container — the viewer would mount into a
+            // node about to be removed, leaving the visible page black.
+            const el = containerRef.current;
 
             // Only init once pannellum is loaded, we have a scene, no viewer yet,
             // AND the container actually has a real size (a 0×0 container would
@@ -164,7 +172,7 @@ export default function Vr() {
                 const firstScene = currentSceneRef.current;
                 if (!scenes[firstScene]) return;
 
-                viewerRef.current = window.pannellum.viewer("pan-container", {
+                viewerRef.current = window.pannellum.viewer(el, {
                     // Smooth crossfade on load + every scene switch → no black flash
                     sceneFadeDuration: 1000,
                     default: {
@@ -221,11 +229,13 @@ export default function Vr() {
                     forceResize();
                 });
 
-                // Repaint across the route-crossfade window (~400ms) so a frame
-                // rendered mid-animation is always corrected afterwards.
-                timers.push(setTimeout(forceResize, 100));
-                timers.push(setTimeout(forceResize, 500));
-                timers.push(setTimeout(forceResize, 900));
+                // Repaint repeatedly across (and well past) the route-crossfade
+                // window (~400ms, longer on slow machines) so a frame rendered
+                // while the page was still fading in is always corrected once it
+                // is fully visible. Cheap, and only runs at init.
+                [100, 300, 500, 800, 1200, 1600, 2200].forEach((ms) =>
+                    timers.push(setTimeout(forceResize, ms))
+                );
                 // Any later layout/size settle also triggers a clean repaint.
                 if ("ResizeObserver" in window) {
                     resizeObserver = new ResizeObserver(forceResize);
@@ -381,8 +391,9 @@ export default function Vr() {
                 </div>
             )}
 
-            {/* 🎥 Viewer */}
-            <div id="pan-container" className="w-full h-full"></div>
+            {/* 🎥 Viewer — targeted by ref (no shared id) so overlapping route
+                transitions can never make it mount into the wrong container. */}
+            <div ref={containerRef} className="w-full h-full"></div>
 
             {/* 🔍 Zoom Controls */}
             <div className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 md:gap-4">

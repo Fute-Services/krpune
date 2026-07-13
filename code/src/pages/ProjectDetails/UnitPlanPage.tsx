@@ -1657,13 +1657,12 @@ export default function UnitPlanPage() {
                             max-w-[80%] max-h-[70vh]       /* Base mobile: Zoomed out effect */
                             md:max-w-[75%] md:max-h-[75vh] /* Tablet (md): Slight zoom out */
                             lg:max-w-[98%] lg:max-h-[95vh] /* Laptop (lg): Untouched original size */
-                            xl:max-w-[98%] xl:max-h-[98vh]
-                            2xl:max-w-[100%] 2xl:max-h-[98vh]
-                            /* mr-[25vh] shifted the image left (a right margin on a
-                               centered flex item pushes it left), so on wide xl/2xl
-                               monitors the left edge ran off-screen. Reduce the shift
-                               on big screens so it stays centered; lg left untouched. */
-                            mt-[12vh] lg:mr-[25vh] xl:mr-[10vh] 2xl:mr-0 ml-[-10%] md:ml-[-10%] lg:ml-0"
+                            /* On wide xl/2xl monitors the full-size image overlapped
+                               the compass + zoom controls on the right. Keep it
+                               centered (mr-0) but a bit SMALLER so both sides clear. */
+                            xl:max-w-[84%] xl:max-h-[82vh]
+                            2xl:max-w-[80%] 2xl:max-h-[82vh]
+                            mt-[12vh] lg:mr-[25vh] xl:mr-0 2xl:mr-0 ml-[-10%] md:ml-[-10%] lg:ml-0"
                         style={{
                             // Offsets are baked directly into the transform!
                             transform: `translate3d(${position.x - (isLowerGround ? -80 : 0)}px, ${position.y - (isLowerGround ? 120 : 0)}px, 0) scale(${zoom})`,
@@ -1690,8 +1689,8 @@ export default function UnitPlanPage() {
                                 max-w-[100%] max-h-90vh]
                                 md:max-w-[85%] md:max-h-[75vh]
                                 lg:max-w-[98%] lg:max-h-[95vh]
-                                xl:max-w-[98%] xl:max-h-[98vh]
-                                2xl:max-w-[100%] 2xl:max-h-[98vh]
+                                xl:max-w-[84%] xl:max-h-[82vh]
+                                2xl:max-w-[80%] 2xl:max-h-[82vh]
                                 
                                 /* 👇 EDIT THESE VALUES freely, they will never separate now 👇 */
                                 ml-[0%]       /* Base mobile margin */

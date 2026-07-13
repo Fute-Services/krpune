@@ -14,6 +14,19 @@ export default function Vr() {
     const navigate = useNavigate();
     const viewerRef = useRef<any>(null);
 
+    // ── Guards that kill the intermittent BLACK SCREEN ──
+    // isTransitioning: while a scene is crossfading (loadScene in flight) we
+    // IGNORE any further hotspot clicks. This is the core fix: one click ->
+    // one scene load. Without it, rapid/double clicks fire several loadScene()
+    // calls at once and pannellum's WebGL renderer goes black.
+    const isTransitioning = useRef(false);
+    // currentSceneRef mirrors currentScene for use inside stable closures
+    // (the hotspot onclick captures a ref, never a stale state value).
+    const currentSceneRef = useRef<string>("");
+    // Safety net: release the lock even if pannellum never fires 'load'
+    // (e.g. an errored/aborted scene) so the tour can never get stuck.
+    const releaseTimerRef = useRef<any>(null);
+
     const [scenes, setScenes] = useState<any>({});
     const [currentScene, setCurrentScene] = useState<string>("");
     const [error, setError] = useState(false);
@@ -26,6 +39,7 @@ export default function Vr() {
 
                 setScenes(data.scenes);
                 setCurrentScene(data.default.firstScene);
+                currentSceneRef.current = data.default.firstScene;
 
                 // Preload all panorama images into the browser cache in the
                 // background. Once cached, pannellum's crossfade is instant and
@@ -46,6 +60,43 @@ export default function Vr() {
         fetchData();
     }, []);
 
+    // ── Single entry point for changing scene ──
+    // Every hotspot click goes through here so the transition lock is always
+    // respected. One operation at a time, guaranteed.
+    const goToScene = (next: string) => {
+        const viewer = viewerRef.current;
+        if (!viewer || !next) return;
+
+        // Already loading a scene? Ignore the click completely — this is what
+        // stops the "multiple operations at once -> black screen" bug.
+        if (isTransitioning.current) return;
+        // Already on this scene? Nothing to do.
+        if (next === currentSceneRef.current) return;
+
+        isTransitioning.current = true;
+        currentSceneRef.current = next;
+
+        try {
+            // pannellum crossfades via `sceneFadeDuration`. Pass hfov 120 so the
+            // next scene also opens fully zoomed OUT (never carries a zoomed-in
+            // view over from the previous scene).
+            viewer.loadScene(next, "same", "same", 120);
+        } catch (e) {
+            // loadScene threw synchronously — unlock so we don't get stuck.
+            isTransitioning.current = false;
+            return;
+        }
+
+        setCurrentScene(next);
+
+        // Fallback unlock. The 'load' event normally clears the lock; this only
+        // fires if that event is somehow missed, so the tour never freezes.
+        if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
+        releaseTimerRef.current = setTimeout(() => {
+            isTransitioning.current = false;
+        }, 2500);
+    };
+
     // ✅ Custom Arrow
     const createCustomHotspot = (div: any, h: any) => {
         div.classList.add("custom-hotspot-main");
@@ -64,32 +115,30 @@ export default function Vr() {
         div.appendChild(img);
         div.appendChild(span);
 
-        img.onclick = () => {
-            // pannellum crossfades between scenes via `sceneFadeDuration` below,
-            // so no manual overlay is needed. Pass hfov 120 so the next scene
-            // also opens fully zoomed OUT (never carries over a zoomed-in view).
-            viewerRef.current?.loadScene(
-                h.createTooltipArgs.next,
-                "same",
-                "same",
-                120
-            );
-            setCurrentScene(h.createTooltipArgs.next);
-        };
+        // All scene changes funnel through goToScene (transition-locked).
+        img.onclick = () => goToScene(h.createTooltipArgs.next);
     };
 
     // 🔥 INIT VIEWER ONCE ONLY
+    //
+    // Depends on `scenes` only (NOT currentScene). Previously currentScene was a
+    // dependency, so this whole effect tore down and rebuilt its ResizeObserver
+    // and forceResize timers on EVERY scene click — firing resize() in the
+    // middle of a crossfade, which itself caused black frames on slower GPUs.
+    // Now it runs a single time, when the scene data first arrives.
     useEffect(() => {
+        if (!currentScene || !Object.keys(scenes).length) return;
+
         let intervalId: any;
         let resizeObserver: ResizeObserver | null = null;
         const timers: any[] = [];
 
         // Force pannellum to recompute its WebGL viewport and repaint. This is
-        // what kills the intermittent BLACK SCREEN: the viewer gets created
-        // while the page is still mid route-crossfade (opacity/GPU-composited),
-        // so its first WebGL frame can come out black. Re-running resize() after
-        // the animation settles makes it paint correctly — no need to leave and
-        // come back to the page anymore.
+        // what kills the intermittent BLACK SCREEN on first paint: the viewer
+        // gets created while the page is still mid route-crossfade
+        // (opacity/GPU-composited), so its first WebGL frame can come out black.
+        // Re-running resize() after the animation settles makes it paint
+        // correctly.
         const forceResize = () => {
             try {
                 viewerRef.current?.resize?.();
@@ -106,20 +155,20 @@ export default function Vr() {
             // give the WebGL canvas a 0×0 viewport = permanent black).
             if (
                 window.pannellum &&
-                currentScene &&
+                currentSceneRef.current &&
                 !viewerRef.current &&
                 el &&
                 el.clientWidth > 0 &&
                 el.clientHeight > 0
             ) {
-                const scene = scenes[currentScene];
-                if (!scene) return;
+                const firstScene = currentSceneRef.current;
+                if (!scenes[firstScene]) return;
 
                 viewerRef.current = window.pannellum.viewer("pan-container", {
-                    // Smooth 1s crossfade on load + every scene switch → no black flash
+                    // Smooth crossfade on load + every scene switch → no black flash
                     sceneFadeDuration: 1000,
                     default: {
-                        firstScene: currentScene,
+                        firstScene,
                         autoLoad: true,
                         autoRotate: -5,
                         autoRotateInactivityDelay: 1000,
@@ -153,11 +202,27 @@ export default function Vr() {
                     }, {}),
                 });
 
-                viewerRef.current.on("error", () => setError(true));
-                // Repaint once the panorama is ready...
-                viewerRef.current.on("load", forceResize);
-                // ...and again across the route-crossfade window (~400ms) so a
-                // frame rendered mid-animation is always corrected afterwards.
+                viewerRef.current.on("error", () => {
+                    // A scene failed to load — release the lock so the tour isn't
+                    // stuck, and surface the error UI.
+                    isTransitioning.current = false;
+                    setError(true);
+                });
+
+                // Fires when a scene finishes loading (initial load AND every
+                // subsequent loadScene). This is the authoritative moment the
+                // crossfade is done: unlock clicks and repaint cleanly.
+                viewerRef.current.on("load", () => {
+                    isTransitioning.current = false;
+                    if (releaseTimerRef.current) {
+                        clearTimeout(releaseTimerRef.current);
+                        releaseTimerRef.current = null;
+                    }
+                    forceResize();
+                });
+
+                // Repaint across the route-crossfade window (~400ms) so a frame
+                // rendered mid-animation is always corrected afterwards.
                 timers.push(setTimeout(forceResize, 100));
                 timers.push(setTimeout(forceResize, 500));
                 timers.push(setTimeout(forceResize, 900));
@@ -175,7 +240,7 @@ export default function Vr() {
 
         // Keep polling until the viewer actually initialises (covers the case
         // where pannellum or the container size isn't ready on the first tick).
-        if (!viewerRef.current && currentScene) {
+        if (!viewerRef.current) {
             intervalId = setInterval(checkAndInit, 100);
         }
 
@@ -184,11 +249,13 @@ export default function Vr() {
             if (resizeObserver) resizeObserver.disconnect();
             timers.forEach(clearTimeout);
         };
-    }, [scenes, currentScene]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scenes]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
+            if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
             if (viewerRef.current) {
                 try {
                     viewerRef.current.destroy();
@@ -305,8 +372,8 @@ export default function Vr() {
             {error && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-40 bg-black">
                     <div className="text-white text-xl mb-4">Unable to load Virtual Tour</div>
-                    <button 
-                        onClick={() => window.location.reload()} 
+                    <button
+                        onClick={() => window.location.reload()}
                         className="px-6 py-2 bg-white text-black font-semibold rounded-full hover:bg-gray-200 transition-all"
                     >
                         Try Again

@@ -1,0 +1,37 @@
+# Repository-root ignores.
+# NOTE: code/.gitignore only governs code/ — these rules protect the root, where
+# an untracked .env (Mapbox token) and multi-hundred-MB build output otherwise sit
+# one `git add -A` away from being committed to a repo with public releases.
+
+# Local env files — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist.zip
+build/
+out/
+
+# Electron build output — large binaries, never commit
+release/
+*.exe
+*.blockmap
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editor / OS junk
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db

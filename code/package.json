@@ -17,6 +17,7 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "vite build && electron .",
+    "panos:optimize": "node scripts/optimize-panoramas.mjs",
     "app:dist": "vite build && electron-builder --win nsis --publish never"
   },
   "build": {

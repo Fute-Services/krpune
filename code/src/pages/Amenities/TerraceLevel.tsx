@@ -176,9 +176,9 @@ export default function TerraceLevel() {
 
     setFade(false);
 
-    setTimeout(() => {
-      setActiveScene(nextScene);
-    }, 300);
+    // Switch straight away — PanoramaViewer now crossfades internally, so this
+    // delay only added latency before anything started moving.
+    setActiveScene(nextScene);
   };
 
   // No loading screen — render nothing until the scene is ready (data is local/instant).

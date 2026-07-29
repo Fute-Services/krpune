@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- <title>Reheja Tower | Virtual Tour</title> -->
+  <!-- Root-relative (rule 5): "./logo.png" resolves against the current route
+       and 404s on any nested path. -->
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <meta name="theme-color" content="#05101f" />
+
+  <!-- Rule 21: without these, an iPad Home Screen icon can open in a normal
+       Safari tab with the address bar showing — indistinguishable from a failed
+       install to whoever is testing it. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="KRC Pune" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <title>Reheja</title>
+</head>
+
+<body>
+  <div class="global-fixed-logo">
+    <!-- Replace src with your actual logo path, e.g., /assets/logo.png -->
+
+  </div>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

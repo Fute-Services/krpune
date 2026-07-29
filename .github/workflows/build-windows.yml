@@ -1,4 +1,4 @@
-name: Build Windows App
+﻿name: Build Windows App
 
 # Builds the Electron app into a Windows installer (.exe) and publishes it as a
 # downloadable artifact + a "latest" GitHub Release on every push to main.
@@ -28,10 +28,10 @@ jobs:
         with:
           node-version: 22   # 20 is deprecated on GitHub runners; 22 is current LTS
           cache: npm
-          cache-dependency-path: code/package-lock.json   # lock file lives in code/, not repo root
+          cache-dependency-path: desktop/package-lock.json   # lock file lives in desktop/, not repo root
 
       - name: Install dependencies
-        working-directory: code
+        working-directory: desktop
         run: npm ci
 
       - name: Build Windows installer
@@ -41,8 +41,8 @@ jobs:
         # secrets are set, electron-builder picks them up automatically via the
         # CSC_LINK / CSC_KEY_PASSWORD env vars and signs the installer + exe.
         # If the secrets are empty, the build stays unsigned (as before) and
-        # still succeeds — so nothing breaks until the certificate is added.
-        working-directory: code
+        # still succeeds â€” so nothing breaks until the certificate is added.
+        working-directory: desktop
         run: npm run app:dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: KRC-Pune-Windows-Installer
-          path: code/release/*.exe
+          path: desktop/release/*.exe
           if-no-files-found: error
 
       - name: Delete old "latest" release so the new one shows a fresh date
@@ -75,18 +75,18 @@ jobs:
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Windows Build' }}
-          files: code/release/*.exe
+          files: desktop/release/*.exe
           fail_on_unmatched_files: true
           # Put a big clickable download link right in the release description so
           # there's no need to expand the "Assets" section to find the installer.
           body: |
-            ## ⬇️ Download the Windows app
+            ## â¬‡ï¸ Download the Windows app
 
-            ### 👉 [**Click here to download KRC Pune (Windows installer, ~1 GB)**](https://github.com/${{ github.repository }}/releases/download/latest/KRC.Pune.Setup.0.0.0.exe)
+            ### ðŸ‘‰ [**Click here to download KRC Pune (Windows installer, ~1 GB)**](https://github.com/${{ github.repository }}/releases/download/latest/KRC.Pune.Setup.0.0.0.exe)
 
             After it downloads, double-click the `.exe` to install.
 
-            You can share this same link with anyone — it always points to the latest build.
+            You can share this same link with anyone â€” it always points to the latest build.
 
       - name: Show download link in the build summary
         # After every build this prints a clickable download link on the
@@ -94,15 +94,15 @@ jobs:
         shell: bash
         run: |
           TAG='${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}'
-          EXE=$(ls code/release/*.exe | head -1)
+          EXE=$(ls desktop/release/*.exe | head -1)
           NAME=$(basename "$EXE" | sed 's/ /./g')
           URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}"
           {
-            echo "## ✅ Windows build ready"
+            echo "## âœ… Windows build ready"
             echo ""
             echo "**Download the installer:**"
             echo ""
-            echo "👉 [$NAME]($URL)"
+            echo "ðŸ‘‰ [$NAME]($URL)"
             echo ""
             echo "Release page: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           } >> "$GITHUB_STEP_SUMMARY"

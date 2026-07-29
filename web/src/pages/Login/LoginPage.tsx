@@ -55,15 +55,18 @@ export default function LoginPage() {
     <div className="relative min-h-screen w-full flex bg-[#05101f] overflow-hidden">
       {/* ── Mobile: the hero becomes a faded background instead of a panel ── */}
       <div
-        className="lg:hidden absolute inset-0 bg-cover bg-center opacity-25"
+        className="lg:hidden absolute inset-0 bg-cover bg-center opacity-40"
         style={{ backgroundImage: 'url(/login-hero.jpg)' }}
         aria-hidden
       />
       <div
         className="lg:hidden absolute inset-0"
         style={{
+          // Lighter at the top than the first attempt, which stacked a heavy
+          // gradient on top of a 25% image and left the building invisible —
+          // the photo may as well not have been there.
           background:
-            'linear-gradient(180deg, rgba(5,16,31,0.75) 0%, rgba(5,16,31,0.92) 55%, #05101f 100%)',
+            'linear-gradient(180deg, rgba(5,16,31,0.45) 0%, rgba(5,16,31,0.82) 50%, rgba(5,16,31,0.96) 100%)',
         }}
         aria-hidden
       />
@@ -84,10 +87,27 @@ export default function LoginPage() {
               'linear-gradient(120deg, rgba(5,16,31,0.86) 0%, rgba(6,36,66,0.55) 45%, rgba(10,59,106,0.15) 100%)',
           }}
         />
-        {/* Feathered seam into the form side, so the split does not read as a hard edge. */}
+        {/* Feathered seam into the form side. The first version used a 160px
+            linear ramp, which still left a visible vertical edge wherever the
+            photo was bright (the sky, at the top). A wider ramp with an eased
+            midpoint hides it. */}
         <div
-          className="absolute inset-y-0 right-0 w-40"
-          style={{ background: 'linear-gradient(90deg, rgba(5,16,31,0) 0%, #05101f 100%)' }}
+          className="absolute inset-y-0 right-0 w-72"
+          style={{
+            background:
+              'linear-gradient(90deg, rgba(5,16,31,0) 0%, rgba(5,16,31,0.35) 35%, rgba(5,16,31,0.82) 68%, #05101f 100%)',
+          }}
+        />
+
+        {/* Scrim under the tagline. Without it the copy sits directly on the
+            brightest part of the frame — the headlight trails — and the smaller
+            line underneath becomes hard to read. */}
+        <div
+          className="absolute inset-x-0 bottom-0 h-[62%] pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(5,16,31,0) 0%, rgba(5,16,31,0.55) 45%, rgba(5,16,31,0.88) 100%)',
+          }}
         />
 
         <div className="relative z-10 h-full flex flex-col justify-end p-14 xl:p-16">

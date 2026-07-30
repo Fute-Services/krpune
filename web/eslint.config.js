@@ -5,7 +5,10 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // public/vendor holds third-party bundles (pannellum) that we ship verbatim.
+  // Linting them produced 382 errors in minified code we do not own, which
+  // drowned out anything real and made `npm run lint` useless.
+  globalIgnores(['dist', 'public/vendor']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

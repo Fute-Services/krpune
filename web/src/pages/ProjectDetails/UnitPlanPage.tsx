@@ -1234,7 +1234,7 @@ import upIcon from '../../assets/unit/up-icon.png';
 import downIcon from '../../assets/unit/down-icon.png';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import bgUnit from '../../assets/unit/bgunit.jpg';
+import bgUnit from '../../assets/unit/bgUnit.jpg';
 import compess from '../../assets/unit/compass.png';
 import reset from '../../assets/unit/reset.png';
 import zoomout from '../../assets/unit/Zoomout-icon.jpg';

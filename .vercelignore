@@ -1,0 +1,31 @@
+# What Vercel must NOT upload. Without this the CLI ships ~7.3 GB (Electron
+# build output, test artifacts, node_modules) and the upload times out.
+# Vercel installs deps and runs `cd web && npm run build` itself, so only the
+# web/ source and web/public assets need to travel.
+
+node_modules
+.git
+
+# Build output — Vercel rebuilds these
+dist
+build
+out
+release
+*.exe
+*.blockmap
+*.zip
+
+# Electron desktop app — the web deploy never touches it
+desktop
+
+# Test artifacts and local caches
+test-results
+playwright-report
+.vite
+
+# Source panoramas kept for re-encoding; only the optimized copies ship
+web/.media-originals
+
+# Local-only material
+image backups
+docs

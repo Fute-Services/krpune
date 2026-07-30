@@ -36,3 +36,7 @@ pnpm-debug.log*
 .idea
 .DS_Store
 Thumbs.db
+
+# Vercel CLI link + the .env.local it pulls down (already covered by .env.* above,
+# so no bare `.env*` here — that would re-ignore .env.example)
+.vercel

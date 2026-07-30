@@ -15,6 +15,7 @@
  *                                of showing nothing.
  */
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Share, Smartphone, X, MonitorDown, Plus } from 'lucide-react';
 import { usePwaInstall } from '@/hooks/usePwaInstall';
@@ -42,14 +43,25 @@ export default function InstallPrompt() {
   const { canPrompt, isIos, isStandalone, promptInstall } = usePwaInstall();
   const [dismissed, setDismissed] = useState(readDismissed);
   const [visible, setVisible] = useState(false);
+  const { pathname } = useLocation();
+
+  // Home only. Signing in lands the visitor here, so the offer is still the
+  // first thing they see — and an overlay that exists on exactly one screen
+  // cannot sit on top of a control somewhere else. The first version of this
+  // card was bottom-anchored on every route and swallowed the taps meant for
+  // AboutUs's Corporate Profile button, which looked like a broken brochure.
+  const onHome = pathname === '/';
 
   // Hold off briefly so the card animates in over a settled page rather than
   // competing with the route transition on first paint.
   useEffect(() => {
-    if (isStandalone || dismissed) return;
+    if (isStandalone || dismissed || !onHome) {
+      setVisible(false);
+      return;
+    }
     const timer = window.setTimeout(() => setVisible(true), 1500);
     return () => window.clearTimeout(timer);
-  }, [isStandalone, dismissed]);
+  }, [isStandalone, dismissed, onHome]);
 
   // Already running from the Home Screen — there is nothing left to install.
   if (isStandalone) return null;
@@ -71,14 +83,19 @@ export default function InstallPrompt() {
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ y: 40, opacity: 0 }}
+          initial={{ y: -40, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 40, opacity: 0 }}
+          exit={{ y: -40, opacity: 0 }}
           transition={{ duration: 0.35, ease: 'easeOut' }}
-          // bottom-[4.5rem] clears the offline pill (h-10 at bottom-5) so the
-          // two never overlap on a narrow window.
+          // Anchored to the top, not the bottom. The bottom of these pages is
+          // where the real controls live — the offline pill sits bottom-right,
+          // and AboutUs stacks Corporate Profile / Walkthrough / Gallery in the
+          // same corner. A bottom-anchored card sat on top of them and silently
+          // swallowed their taps, which read as "the brochure does not open".
+          // top-[5rem] also clears the update bar (top-0) and the floating Back
+          // button (top-6, ~2.5rem tall).
           className="
-            fixed bottom-[4.5rem] left-1/2 -translate-x-1/2 z-[1950]
+            fixed top-[5rem] left-1/2 -translate-x-1/2 z-[1950]
             w-[min(560px,calc(100vw-2.5rem))]
             rounded-2xl overflow-hidden
             bg-[#062442]/95 backdrop-blur-xl border border-white/15

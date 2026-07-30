@@ -103,6 +103,9 @@ export default class FloorMarkers {
     private nodes: MarkerNode[] = [];
     private hovered: string | null = null;
 
+    /** When false only the invisible hit discs remain — see setRingsVisible. */
+    private ringsVisible = true;
+
     /** The ring that tracks the pointer across the floor. */
     private readonly cursor: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
 
@@ -181,9 +184,13 @@ export default class FloorMarkers {
 
             const core = new THREE.Mesh(this.coreGeometry, this.ringMaterial(IDLE_OPACITY));
             core.renderOrder = 11;
+            // Every scene change rebuilds these, so the flag has to be applied
+            // here too — otherwise the rings reappear on the next panorama.
+            core.visible = this.ringsVisible;
 
             const halo = new THREE.Mesh(this.haloGeometry, this.ringMaterial(0));
             halo.renderOrder = 11;
+            halo.visible = this.ringsVisible;
 
             const hit = new THREE.Mesh(
                 this.hitGeometry,
@@ -238,9 +245,26 @@ export default class FloorMarkers {
         return this.nodes.find((n) => n.marker.id === this.hovered)?.marker ?? null;
     }
 
+    /**
+     * Draw the rings, or leave only their invisible hit discs behind.
+     *
+     * The VR tour turns them off: it signposts destinations with the arrow
+     * markers instead, and a ring under every arrow just added a second thing
+     * to look at. The hit discs stay either way, so the floor around an arrow
+     * remains a generous touch target and hover still resolves.
+     */
+    setRingsVisible(visible: boolean) {
+        this.ringsVisible = visible;
+        for (const node of this.nodes) {
+            node.core.visible = visible;
+            node.halo.visible = visible;
+        }
+        if (!visible) this.cursor.visible = false;
+    }
+
     /** Park the ghost ring on the floor, or hide it when off the floor. */
     setCursor(point: THREE.Vector3 | null, distance = REFERENCE_DISTANCE) {
-        if (!point || this.hovered) {
+        if (!this.ringsVisible || !point || this.hovered) {
             this.cursor.visible = false;
             return;
         }

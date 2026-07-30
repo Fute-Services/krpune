@@ -901,6 +901,15 @@ export default class PanoramaEngine {
     }
 
     /**
+     * Show or hide the floor rings. Their invisible hit discs stay either way,
+     * so navigation and hover keep working with the rings turned off.
+     */
+    setRingsVisible(visible: boolean) {
+        this.floorMarkers.setRingsVisible(visible);
+        this.invalidate();
+    }
+
+    /**
      * The destinations currently on the floor, resolved to real positions.
      *
      * Exposed so the page can draw its own DOM overlay for each one — the

@@ -232,6 +232,17 @@ export default function Vr() {
     }, [engine, markers, ready]);
 
     /**
+     * Rings off — the arrow signposts do the signposting now.
+     *
+     * Re-applied whenever the markers change, because a scene change rebuilds
+     * the ring meshes from scratch. Their hit discs survive this, so the floor
+     * around an arrow is still a generous touch target.
+     */
+    useEffect(() => {
+        engine?.setRingsVisible(false);
+    }, [engine, markers, ready]);
+
+    /**
      * The rotation each signpost's arrow is drawn at, keyed by destination.
      *
      * These angles come straight from the original tour data

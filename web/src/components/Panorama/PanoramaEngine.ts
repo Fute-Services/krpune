@@ -900,6 +900,17 @@ export default class PanoramaEngine {
         this.invalidate();
     }
 
+    /**
+     * The destinations currently on the floor, resolved to real positions.
+     *
+     * Exposed so the page can draw its own DOM overlay for each one — the
+     * signposted arrows the tour uses need a screen position per marker, and
+     * only the engine knows where the markers ended up.
+     */
+    get navigationMarkers(): Marker[] {
+        return this.floorMarkers.markers;
+    }
+
     /** Screen position of a marker, for placing a DOM label over it. */
     projectMarker(marker: Marker): ScreenPoint {
         const projected = marker.position.clone().project(this.camera);

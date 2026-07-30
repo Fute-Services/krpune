@@ -32,6 +32,16 @@ const DISPLAY_NAMES: Record<string, string> = {
     retail: "RETAIL ZONE",
 };
 
+/** One on-screen signpost: the arrow asset plus the name it walks you to. */
+interface Signpost {
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+    /** Degrees, straight from the tour data — points down the real corridor. */
+    rotation: number;
+}
+
 export default function Vr() {
     const navigate = useNavigate();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -42,6 +52,19 @@ export default function Vr() {
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(false);
     const [hovered, setHovered] = useState<{ label: string; x: number; y: number } | null>(null);
+
+    /**
+     * Where each destination's signpost sits on screen this frame.
+     *
+     * The floor rings alone were not readable on a tablet — nothing about a
+     * ring says "tap here to walk there", and visitors just stood still. The
+     * tour's original arrow-and-label signposts go back on top of them, which
+     * is the affordance people actually recognise.
+     */
+    const [signposts, setSignposts] = useState<Signpost[]>([]);
+    /** Last frame we pushed to React, so a still camera costs nothing. */
+    const signpostsRef = useRef<Signpost[]>([]);
+    const lastSignpostPush = useRef(0);
 
     // Read inside engine callbacks, which are registered once.
     const scenesRef = useRef(scenes);
@@ -208,6 +231,80 @@ export default function Vr() {
         engine.setMarkers(markers);
     }, [engine, markers, ready]);
 
+    /**
+     * The rotation each signpost's arrow is drawn at, keyed by destination.
+     *
+     * These angles come straight from the original tour data
+     * (`createTooltipArgs.rotation`) — they were authored per hotspot so the
+     * arrow points down the corridor you actually walk, not at the camera.
+     */
+    const arrowRotations = useMemo(() => {
+        const byDestination: Record<string, number> = {};
+        (scene?.hotSpots || []).forEach((h) => {
+            if (h.next) byDestination[h.next] = h.rotation ?? 0;
+        });
+        return byDestination;
+    }, [scene]);
+
+    /**
+     * Re-project the signposts every frame.
+     *
+     * They are DOM, but they have to track a 3D position through drag, zoom,
+     * auto-rotate and the walk animation — so the position is recomputed on the
+     * engine's own frame callback rather than on React state changes.
+     */
+    useEffect(() => {
+        if (!engine) return;
+
+        // Nothing to point at until a panorama is up, and during a walk the
+        // signposts would slide across a scene that is already dissolving.
+        if (!ready || walking) {
+            signpostsRef.current = [];
+            setSignposts([]);
+            return;
+        }
+
+        engine.onFrame = () => {
+            const next: Signpost[] = [];
+            for (const marker of engine.navigationMarkers) {
+                const point = engine.projectMarker(marker);
+                if (!point.visible) continue;
+                next.push({
+                    id: marker.id,
+                    label: marker.label || DISPLAY_NAMES[marker.id] || marker.id,
+                    // Whole pixels: sub-pixel jitter would re-render on a
+                    // camera that has effectively stopped moving.
+                    x: Math.round(point.x),
+                    y: Math.round(point.y),
+                    rotation: arrowRotations[marker.id] ?? 0,
+                });
+            }
+
+            // Two guards, because this runs at display refresh rate and each
+            // push re-renders. Cap the rate, and skip entirely when the camera
+            // is still — which is most of the time a visitor is reading.
+            const now = performance.now();
+            if (now - lastSignpostPush.current < 33) return;
+
+            const previous = signpostsRef.current;
+            const unchanged =
+                previous.length === next.length &&
+                previous.every((p, i) => {
+                    const n = next[i];
+                    return p.id === n.id && p.x === n.x && p.y === n.y && p.rotation === n.rotation;
+                });
+            if (unchanged) return;
+
+            lastSignpostPush.current = now;
+            signpostsRef.current = next;
+            setSignposts(next);
+        };
+
+        return () => {
+            engine.onFrame = null;
+        };
+    }, [engine, ready, walking, arrowRotations]);
+
     // ── Keep the scenes one step away warm, so a walk never waits ──
     useEffect(() => {
         if (!engine || !scene || !ready) return;
@@ -251,8 +348,42 @@ export default function Vr() {
             {/* 🎥 Viewer — the floor markers live inside the 3D scene */}
             <div ref={containerRef} className="w-full h-full" />
 
-            {/* Name of the spot under the pointer, tracking its ring */}
-            {hovered && !walking && (
+            {/* Signposts — the arrow-and-label markers the tour originally had.
+                They sit over the floor rings rather than replacing them: the
+                ring is the target you walk onto, the arrow is what tells a
+                visitor there is somewhere to go and names it. Restored because
+                the rings on their own read as decoration on a tablet. */}
+            {!walking &&
+                signposts.map((s) => (
+                    <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                            const marker = engine?.navigationMarkers.find((m) => m.id === s.id);
+                            if (marker) walkTo(marker);
+                        }}
+                        aria-label={`Walk to ${s.label}`}
+                        // -translate-x-1/2 centres it on the ring; the arrow is
+                        // lifted clear of the ring so both stay readable.
+                        className="absolute z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 border-0 bg-transparent p-2 cursor-pointer transition-transform duration-200 hover:scale-110 active:scale-95"
+                        style={{ left: s.x, top: s.y }}
+                    >
+                        <img
+                            src="/VR/arrowfinal.png"
+                            alt=""
+                            draggable={false}
+                            className="w-9 h-9 select-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] md:w-11 md:h-11"
+                            style={{ transform: `rotate(${s.rotation}deg)` }}
+                        />
+                        <span className="whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm md:text-[11px]">
+                            {s.label}
+                        </span>
+                    </button>
+                ))}
+
+            {/* Name of the spot under the pointer. Only when the signposts are
+                not up — otherwise every destination is labelled twice. */}
+            {hovered && !walking && signposts.length === 0 && (
                 <div
                     className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full bg-black/70 px-3 py-1.5 text-[11px] font-medium tracking-wide text-white backdrop-blur-sm md:text-xs"
                     style={{ left: hovered.x, top: hovered.y - 18 }}

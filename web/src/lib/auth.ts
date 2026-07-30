@@ -13,8 +13,8 @@
  * event, rather than a plain read-on-mount.
  */
 
-const VALID_EMAIL = 'cignus@gmail.com';
-const VALID_PASSWORD = 'cignus123';
+const VALID_EMAIL = 'krcpune@gmail.com';
+const VALID_PASSWORD = 'krcpune123';
 
 const STORAGE_KEY = 'krc.auth.session';
 

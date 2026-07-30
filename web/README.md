@@ -37,8 +37,8 @@ SPA routing fallbacks ship in `public/`: `_redirects` (Netlify-style) and
 
 ## Login gate
 
-Credentials are hardcoded in `src/lib/auth.ts` (`cignus@gmail.com` /
-`cignus123`) and the session is a localStorage flag. There is no backend, so
+Credentials are hardcoded in `src/lib/auth.ts` (`krcpune@gmail.com` /
+`krcpune123`) and the session is a localStorage flag. There is no backend, so
 this is **not** a security boundary — anyone can read the constants out of the
 bundle. Its job is to stop a logged-out visitor from pulling ~510 MB onto their
 device and from installing the app.

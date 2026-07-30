@@ -46,7 +46,7 @@ export const VIDEO_ROUTES = [
 /** Routes that render through a WebGL canvas. */
 export const CANVAS_ROUTES = ['/vr'];
 
-export const CREDENTIALS = { email: 'cignus@gmail.com', password: 'cignus123' };
+export const CREDENTIALS = { email: 'krcpune@gmail.com', password: 'krcpune123' };
 
 export function url(path: string): string {
   return `/#${path}`;

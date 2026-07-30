@@ -6,6 +6,7 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { RequireAuth } from './RequireAuth';
 import OfflineStatus from '../components/pwa/OfflineStatus';
+import InstallPrompt from '../components/pwa/InstallPrompt';
 
 export const RootLayout = () => {
   const location = useLocation();
@@ -60,6 +61,11 @@ export const RootLayout = () => {
       {/* Download progress + install affordances. Rendered here, inside the
           authenticated shell, so a logged-out visitor never sees either. */}
       <OfflineStatus />
+
+      {/* The install offer, surfaced on its own rather than buried in the
+          OfflineStatus panel — that panel is behind a collapsed pill nobody
+          opens, which made the app look like it could not be installed. */}
+      <InstallPrompt />
 
       {/* {footer && <Footer1 />} */}
       {/* <footer className={styles.footer}>

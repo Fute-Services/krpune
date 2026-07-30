@@ -1,62 +1,10 @@
 {
   "generatedFrom": "public/media",
-  "totalBytes": 535047572,
+  "totalBytes": 470536533,
   "files": [
-    {
-      "url": "/media/amenities/CAM_02_CAFETERIA_SEATING_1_1_1_s4p4a7.png",
-      "bytes": 5242623
-    },
-    {
-      "url": "/media/amenities/CAM_05_FOOD_COURT_1_w4bxwt.png",
-      "bytes": 8479492
-    },
-    {
-      "url": "/media/amenities/Cam_08_Terrace_Multipurpose_Court_1_1_hacimk.png",
-      "bytes": 5516010
-    },
-    {
-      "url": "/media/amenities/Cam_09_Terrace_Sports_Area_1_1_kpcdlb.png",
-      "bytes": 4728831
-    },
-    {
-      "url": "/media/amenities/Cam_10_Terrace_Amenities_01_1_1_ydhx6s.png",
-      "bytes": 4363386
-    },
-    {
-      "url": "/media/amenities/Cam_11_Terrace_Food_court_1_aqea5j.png",
-      "bytes": 4668664
-    },
     {
       "url": "/media/amenities/cam_4_2_igzh94.png",
       "bytes": 5576932
-    },
-    {
-      "url": "/media/amenities/dropoff_hphas8.png",
-      "bytes": 8563562
-    },
-    {
-      "url": "/media/amenities/entry_gate_rk0ekp.png",
-      "bytes": 4482615
-    },
-    {
-      "url": "/media/amenities/lift_lobby_ulxrf8.jpg",
-      "bytes": 9103366
-    },
-    {
-      "url": "/media/amenities/podium_1_wwubnq.jpg",
-      "bytes": 4701543
-    },
-    {
-      "url": "/media/amenities/podium_2_thsysq.jpg",
-      "bytes": 4306195
-    },
-    {
-      "url": "/media/amenities/reception_lobby_dqf37c.jpg",
-      "bytes": 1593326
-    },
-    {
-      "url": "/media/amenities/retail_qzuvno.jpg",
-      "bytes": 3762754
     },
     {
       "url": "/media/floors/10th_Floor_t26tul.png",
@@ -375,6 +323,206 @@
       "bytes": 2219551
     },
     {
+      "url": "/media/optimized/amenities/CAM_02_CAFETERIA_SEATING_1_1_1_s4p4a7.jpg",
+      "bytes": 1417782
+    },
+    {
+      "url": "/media/optimized/amenities/CAM_05_FOOD_COURT_1_w4bxwt.jpg",
+      "bytes": 1899922
+    },
+    {
+      "url": "/media/optimized/amenities/Cam_08_Terrace_Multipurpose_Court_1_1_hacimk.jpg",
+      "bytes": 1390633
+    },
+    {
+      "url": "/media/optimized/amenities/Cam_09_Terrace_Sports_Area_1_1_kpcdlb.jpg",
+      "bytes": 1500275
+    },
+    {
+      "url": "/media/optimized/amenities/Cam_10_Terrace_Amenities_01_1_1_ydhx6s.jpg",
+      "bytes": 1465924
+    },
+    {
+      "url": "/media/optimized/amenities/Cam_11_Terrace_Food_court_1_aqea5j.jpg",
+      "bytes": 1814562
+    },
+    {
+      "url": "/media/optimized/amenities/dropoff_hphas8.jpg",
+      "bytes": 3395298
+    },
+    {
+      "url": "/media/optimized/amenities/entry_gate_rk0ekp.jpg",
+      "bytes": 2971345
+    },
+    {
+      "url": "/media/optimized/amenities/lift_lobby_ulxrf8.jpg",
+      "bytes": 1124578
+    },
+    {
+      "url": "/media/optimized/amenities/podium_1_wwubnq.jpg",
+      "bytes": 3211821
+    },
+    {
+      "url": "/media/optimized/amenities/podium_2_thsysq.jpg",
+      "bytes": 2806840
+    },
+    {
+      "url": "/media/optimized/amenities/reception_lobby_dqf37c.jpg",
+      "bytes": 1307761
+    },
+    {
+      "url": "/media/optimized/amenities/retail_qzuvno.jpg",
+      "bytes": 2784191
+    },
+    {
+      "url": "/media/optimized/vr/dropoff_hphas8.jpg",
+      "bytes": 3395298
+    },
+    {
+      "url": "/media/optimized/vr/entry_gate_6k.jpg",
+      "bytes": 2794714
+    },
+    {
+      "url": "/media/optimized/vr/leftlobby_hhdbqu.jpg",
+      "bytes": 1124578
+    },
+    {
+      "url": "/media/optimized/vr/Podium1_ccpkiv.jpg",
+      "bytes": 2806840
+    },
+    {
+      "url": "/media/optimized/vr/Podium2_ct3xcx.jpg",
+      "bytes": 3211821
+    },
+    {
+      "url": "/media/optimized/vr/reception_6k.jpg",
+      "bytes": 1338433
+    },
+    {
+      "url": "/media/optimized/vr/retail_qzuvno.jpg",
+      "bytes": 2784191
+    },
+    {
+      "url": "/media/optimized/vr/terrace_j7plaz.jpg",
+      "bytes": 1862474
+    },
+    {
+      "url": "/media/optimized/vr/terrace_sports_whgiwg.jpg",
+      "bytes": 1664760
+    },
+    {
+      "url": "/media/optimized/vr/terrace1_bepxpf.jpg",
+      "bytes": 1361609
+    },
+    {
+      "url": "/media/optimized/vr/terrace2_lgrepr.jpg",
+      "bytes": 1450791
+    },
+    {
+      "url": "/media/panorama-manifest.json",
+      "bytes": 4364
+    },
+    {
+      "url": "/media/previews/amenities/CAM_02_CAFETERIA_SEATING_1_1_1_s4p4a7.jpg",
+      "bytes": 41796
+    },
+    {
+      "url": "/media/previews/amenities/CAM_05_FOOD_COURT_1_w4bxwt.jpg",
+      "bytes": 71630
+    },
+    {
+      "url": "/media/previews/amenities/Cam_08_Terrace_Multipurpose_Court_1_1_hacimk.jpg",
+      "bytes": 22069
+    },
+    {
+      "url": "/media/previews/amenities/Cam_09_Terrace_Sports_Area_1_1_kpcdlb.jpg",
+      "bytes": 30196
+    },
+    {
+      "url": "/media/previews/amenities/Cam_10_Terrace_Amenities_01_1_1_ydhx6s.jpg",
+      "bytes": 31939
+    },
+    {
+      "url": "/media/previews/amenities/Cam_11_Terrace_Food_court_1_aqea5j.jpg",
+      "bytes": 41372
+    },
+    {
+      "url": "/media/previews/amenities/dropoff_hphas8.jpg",
+      "bytes": 58309
+    },
+    {
+      "url": "/media/previews/amenities/entry_gate_rk0ekp.jpg",
+      "bytes": 50875
+    },
+    {
+      "url": "/media/previews/amenities/lift_lobby_ulxrf8.jpg",
+      "bytes": 45883
+    },
+    {
+      "url": "/media/previews/amenities/podium_1_wwubnq.jpg",
+      "bytes": 63351
+    },
+    {
+      "url": "/media/previews/amenities/podium_2_thsysq.jpg",
+      "bytes": 44060
+    },
+    {
+      "url": "/media/previews/amenities/reception_lobby_dqf37c.jpg",
+      "bytes": 51881
+    },
+    {
+      "url": "/media/previews/amenities/retail_qzuvno.jpg",
+      "bytes": 52300
+    },
+    {
+      "url": "/media/previews/vr/cafenew_1_ejb6xp.jpg",
+      "bytes": 41510
+    },
+    {
+      "url": "/media/previews/vr/dropoff_hphas8.jpg",
+      "bytes": 58309
+    },
+    {
+      "url": "/media/previews/vr/entry_gate_6k.jpg",
+      "bytes": 49396
+    },
+    {
+      "url": "/media/previews/vr/leftlobby_hhdbqu.jpg",
+      "bytes": 45883
+    },
+    {
+      "url": "/media/previews/vr/Podium1_ccpkiv.jpg",
+      "bytes": 44060
+    },
+    {
+      "url": "/media/previews/vr/Podium2_ct3xcx.jpg",
+      "bytes": 63351
+    },
+    {
+      "url": "/media/previews/vr/reception_6k.jpg",
+      "bytes": 51839
+    },
+    {
+      "url": "/media/previews/vr/retail_qzuvno.jpg",
+      "bytes": 52300
+    },
+    {
+      "url": "/media/previews/vr/terrace_j7plaz.jpg",
+      "bytes": 32381
+    },
+    {
+      "url": "/media/previews/vr/terrace_sports_whgiwg.jpg",
+      "bytes": 34753
+    },
+    {
+      "url": "/media/previews/vr/terrace1_bepxpf.jpg",
+      "bytes": 33251
+    },
+    {
+      "url": "/media/previews/vr/terrace2_lgrepr.jpg",
+      "bytes": 38767
+    },
+    {
       "url": "/media/transport/v1_ylbd70.mp4",
       "bytes": 2674137
     },
@@ -401,50 +549,6 @@
     {
       "url": "/media/vr/cafenew_1_ejb6xp.jpg",
       "bytes": 2120195
-    },
-    {
-      "url": "/media/vr/dropoff_hphas8.png",
-      "bytes": 8563562
-    },
-    {
-      "url": "/media/vr/entry_gate_6k.jpg",
-      "bytes": 6063325
-    },
-    {
-      "url": "/media/vr/leftlobby_hhdbqu.jpg",
-      "bytes": 9103366
-    },
-    {
-      "url": "/media/vr/Podium1_ccpkiv.jpg",
-      "bytes": 4306195
-    },
-    {
-      "url": "/media/vr/Podium2_ct3xcx.jpg",
-      "bytes": 4701543
-    },
-    {
-      "url": "/media/vr/reception_6k.jpg",
-      "bytes": 2198508
-    },
-    {
-      "url": "/media/vr/retail_qzuvno.jpg",
-      "bytes": 3762754
-    },
-    {
-      "url": "/media/vr/terrace_j7plaz.jpg",
-      "bytes": 2505461
-    },
-    {
-      "url": "/media/vr/terrace_sports_whgiwg.jpg",
-      "bytes": 2368556
-    },
-    {
-      "url": "/media/vr/terrace1_bepxpf.jpg",
-      "bytes": 1657203
-    },
-    {
-      "url": "/media/vr/terrace2_lgrepr.jpg",
-      "bytes": 1810465
     }
   ]
 }

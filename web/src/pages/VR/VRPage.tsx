@@ -100,6 +100,19 @@ export default function Vr() {
 
     const scene = scenes[currentScene];
 
+    /**
+     * The blurred stand-in for the opening scene, shown as an ordinary CSS
+     * background while the real panorama is still decoding.
+     *
+     * This is the whole fix for the black screen. It is a 1024×512 JPEG painted
+     * by the normal image pipeline — no WebGL, no texture upload, no mipmap
+     * generation — so it appears in tens of milliseconds instead of waiting on
+     * the seconds those three steps cost for an equirectangular panorama.
+     * Undefined until `npm run panos:optimize` has been run, in which case the
+     * cover stays black exactly as before.
+     */
+    const previewUrl = scene ? resolveSource(scene.url).preview : undefined;
+
     // ── Show the first panorama ──
     useEffect(() => {
         if (!engine || !scene || ready) return;
@@ -108,19 +121,15 @@ export default function Vr() {
         (async () => {
             const source = resolveSource(scene.url);
             try {
-                // A blurred stand-in (when the optimizer script has been run)
-                // puts something on screen straight away; the full image blends
-                // in behind it a moment later.
-                if (source.preview) {
-                    await engine.show(source.preview, { lon: scene.yaw ?? 0, lat: scene.pitch ?? 0 });
-                    if (cancelled) return;
-                    setReady(true);
-                    await engine.crossfadeTo(source.full, 350);
-                } else {
-                    await engine.show(source.full, { lon: scene.yaw ?? 0, lat: scene.pitch ?? 0 });
-                    if (cancelled) return;
-                    setReady(true);
-                }
+                // Straight to the full image. The earlier version put the
+                // preview on the sphere first and crossfaded, which meant two
+                // texture uploads and two blends for one arrival — and the
+                // screen was still black through the first of them, because
+                // even a small texture waits on the engine being ready. The CSS
+                // cover above covers that window for free.
+                await engine.show(source.full, { lon: scene.yaw ?? 0, lat: scene.pitch ?? 0 });
+                if (cancelled) return;
+                setReady(true);
             } catch (err) {
                 console.error("VR panorama failed to load", err);
                 if (!cancelled) setError(true);
@@ -252,11 +261,19 @@ export default function Vr() {
                 </div>
             )}
 
-            {/* First-paint cover — fades away as soon as a panorama is on screen,
-                so the route crossfade never reveals an empty canvas. */}
+            {/* First-paint cover — fades away as soon as the panorama is on the
+                sphere, so the route crossfade never reveals an empty canvas.
+
+                It carries the blurred preview when one exists, which turns the
+                old several-second black hole into the scene appearing straight
+                away and then sharpening. Deliberately not a spinner: there is
+                nothing to wait for once you can see where you are. */}
             <div
-                className="absolute inset-0 z-30 bg-black transition-opacity duration-500 pointer-events-none"
-                style={{ opacity: ready ? 0 : 1 }}
+                className="absolute inset-0 z-30 bg-black bg-cover bg-center transition-opacity duration-500 pointer-events-none"
+                style={{
+                    opacity: ready ? 0 : 1,
+                    backgroundImage: previewUrl ? `url(${previewUrl})` : undefined,
+                }}
             />
 
             {/* 🔍 Zoom Controls */}

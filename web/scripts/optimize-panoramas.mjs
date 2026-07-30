@@ -30,7 +30,23 @@ const PREVIEW_WIDTH = 1024;
 const PREVIEW_HEIGHT = 512;
 const PREVIEW_QUALITY = 70;
 const PREVIEW_BLUR = 1.2;
-const FULL_QUALITY = 92;
+const FULL_QUALITY = 88;
+
+/**
+ * Equirectangular panoramas are shipped at 6000×3000, which is the wrong size
+ * for two separate reasons:
+ *
+ *  - 4096 is the maximum texture dimension guaranteed by WebGL, and it is the
+ *    real limit on older iPads. Anything wider is either rejected or silently
+ *    rescaled by the driver, so those extra pixels are decoded and thrown away.
+ *  - 18 megapixels of JPEG blocks the main thread for seconds on a tablet. That
+ *    stall *is* the black screen when the tour opens; nothing else is wrong.
+ *
+ * 4096×2048 is 2.15× fewer pixels and looks identical at the field of view this
+ * tour uses. Originals are never modified — these are siblings.
+ */
+const FULL_MAX_WIDTH = 4096;
+const FULL_MAX_HEIGHT = 2048;
 
 let sharp;
 try {
@@ -74,16 +90,30 @@ for (const dir of SOURCE_DIRS) {
         // folders (page backgrounds, for instance) is left alone.
         const isPanorama = metadata.width >= 2 * metadata.height * 0.85;
 
-        // ── A JPEG twin for the heavy PNGs ──
-        if (/\.png$/i.test(file)) {
+        // ── The full-quality sibling the viewer actually loads ──
+        // Produced for every panorama, not just the PNGs: the JPEGs are the
+        // ones causing the stall, because they are 6000×3000 too.
+        const needsResize =
+            metadata.width > FULL_MAX_WIDTH || metadata.height > FULL_MAX_HEIGHT;
+        if (isPanorama && (needsResize || /\.png$/i.test(file))) {
             const outRel = toPosix(path.join("media", OPTIMIZED_DIR, dir, `${base}.jpg`));
             const outPath = path.join(root, "public", outRel);
-            await sharp(sourcePath)
+            const pipeline = sharp(sourcePath);
+            if (needsResize) {
+                pipeline.resize(FULL_MAX_WIDTH, FULL_MAX_HEIGHT, {
+                    fit: "fill", // equirectangular: the 2:1 ratio must be preserved exactly
+                    kernel: "lanczos3",
+                });
+            }
+            await pipeline
                 .jpeg({ quality: FULL_QUALITY, mozjpeg: true, chromaSubsampling: "4:4:4" })
                 .toFile(outPath);
             entry.full = outRel;
             const [before, after] = await Promise.all([stat(sourcePath), stat(outPath)]);
-            console.log(`  ✓ ${key}  ${kb(before.size)} → ${kb(after.size)}`);
+            console.log(
+                `  ✓ ${key}  ${metadata.width}×${metadata.height} ${kb(before.size)}` +
+                    ` → ${needsResize ? `${FULL_MAX_WIDTH}×${FULL_MAX_HEIGHT}` : "same"} ${kb(after.size)}`
+            );
             generated++;
         }
 

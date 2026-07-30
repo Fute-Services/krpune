@@ -51,17 +51,54 @@ const allMedia = walk(mediaDir)
   // would count as a failed download and scare the user for no reason.
   .filter((f) => !/(^|[\\/])(Thumbs\.db|\.DS_Store)$/i.test(f));
 
+/**
+ * `npm run panos:optimize` writes media/panorama-manifest.json, mapping each
+ * original panorama to a smaller `full` and a blurred `preview`. When that
+ * exists the viewer loads the siblings and never touches the original, so:
+ *
+ *   - the siblings are referenced even though no source file names them, and
+ *   - the superseded originals must be *excluded*, or every device downloads
+ *     both the 4096-wide copy it uses and the 6000-wide one it does not.
+ *
+ * Safe to depend on offline: panorama-manifest.json is a .json under dist/ and
+ * is therefore precached, so the mapping is always there when the app looks.
+ */
+const panoManifestPath = join(mediaDir, 'panorama-manifest.json');
+let panoManifest = {};
+try {
+  panoManifest = JSON.parse(readFileSync(panoManifestPath, 'utf8'));
+} catch {
+  /* not generated — everything falls back to the originals */
+}
+
+const supersededOriginals = new Set(
+  Object.entries(panoManifest)
+    .filter(([, entry]) => entry?.full)
+    .map(([original]) => original),
+);
+const variantPaths = new Set(
+  Object.values(panoManifest).flatMap((entry) =>
+    [entry?.full, entry?.preview].filter(Boolean),
+  ),
+);
+
 const haystack = collectSourceText();
 
 const referenced = [];
 const unreferenced = [];
+const superseded = [];
 
 for (const file of allMedia) {
   // Always emit a root-relative URL (rule 5). A relative "./media/x" would
   // resolve against the current route and 404 on nested paths.
   const url = '/' + relative(join(root, 'public'), file).split(/[\\/]/).join('/');
   const bare = url.slice(1); // "media/..." — how the offline JSON writes them
-  if (haystack.includes(bare)) {
+
+  if (supersededOriginals.has(bare)) {
+    superseded.push(url);
+    continue;
+  }
+  if (variantPaths.has(bare) || haystack.includes(bare)) {
     referenced.push({ url, bytes: statSync(file).size });
   } else {
     unreferenced.push(url);
@@ -80,6 +117,11 @@ writeFileSync(
 
 const mb = (n) => (n / 1024 / 1024).toFixed(1);
 console.log(`[offline-manifest] ${referenced.length} referenced files, ${mb(totalBytes)} MB`);
+if (superseded.length) {
+  console.log(
+    `[offline-manifest] excluded ${superseded.length} original(s) superseded by optimized siblings`,
+  );
+}
 if (unreferenced.length) {
   // Rule: no silent caps. If we drop something, say which.
   console.log(`[offline-manifest] skipped ${unreferenced.length} unreferenced file(s):`);

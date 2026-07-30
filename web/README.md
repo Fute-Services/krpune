@@ -38,7 +38,11 @@ SPA routing fallbacks ship in `public/`: `_redirects` (Netlify-style) and
 ## Login gate
 
 Credentials are hardcoded in `src/lib/auth.ts` (`krcpune@gmail.com` /
-`krcpune123`) and the session is a localStorage flag. There is no backend, so
+`krcpune123`) and the session is a localStorage flag that expires 20 minutes
+after sign-in (`SESSION_TTL_MS`), so the next visitor to a shared device has to
+sign in rather than inheriting the last one's session. Expiry is absolute, not
+idle-based, and is enforced on read, on a timer, and again whenever the page
+returns to the foreground — a sleeping tablet does not run timers on schedule. There is no backend, so
 this is **not** a security boundary — anyone can read the constants out of the
 bundle. Its job is to stop a logged-out visitor from pulling ~510 MB onto their
 device and from installing the app.

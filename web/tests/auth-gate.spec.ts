@@ -120,4 +120,63 @@ test.describe('auth gate', () => {
     await expect(second).toHaveURL(/#\/login/, { timeout: 15_000 });
     await second.close();
   });
+
+  /**
+   * The 20-minute session. Waiting it out for real would add 20 minutes to
+   * every run, so these back-date `signedInAt` in storage instead — the same
+   * value the app compares against Date.now().
+   */
+  test('a session older than 20 minutes is not honoured on reload', async ({ page }) => {
+    await login(page);
+    await expect(page).not.toHaveURL(/#\/login/);
+
+    await page.evaluate(() => {
+      const raw = window.localStorage.getItem('krc.auth.session')!;
+      const session = JSON.parse(raw);
+      session.signedInAt = Date.now() - 21 * 60 * 1000;
+      window.localStorage.setItem('krc.auth.session', JSON.stringify(session));
+    });
+
+    await page.reload();
+    await expect(page, 'an expired session still let the visitor in').toHaveURL(/#\/login/);
+
+    // ...and the dead session must not linger for the next visitor to inherit.
+    const stored = await page.evaluate(() => window.localStorage.getItem('krc.auth.session'));
+    expect(stored, 'the expired session was left in storage').toBeNull();
+  });
+
+  test('a session still inside the 20 minutes survives a reload', async ({ page }) => {
+    await login(page);
+
+    await page.evaluate(() => {
+      const raw = window.localStorage.getItem('krc.auth.session')!;
+      const session = JSON.parse(raw);
+      session.signedInAt = Date.now() - 5 * 60 * 1000;
+      window.localStorage.setItem('krc.auth.session', JSON.stringify(session));
+    });
+
+    await page.reload();
+    await expect(page, 'a 5-minute-old session was wrongly rejected').not.toHaveURL(/#\/login/);
+  });
+
+  test('the tour drops back to login when the session ages out while open', async ({ page }) => {
+    await login(page);
+    await page.goto(url('/amenities'));
+    await expect(page).toHaveURL(/#\/amenities/);
+
+    // Age the session out and bring the page back to the foreground — the path
+    // a tablet actually takes when it sleeps through the expiry instead of
+    // sitting awake for the timer to fire.
+    await page.evaluate(() => {
+      const raw = window.localStorage.getItem('krc.auth.session')!;
+      const session = JSON.parse(raw);
+      session.signedInAt = Date.now() - 21 * 60 * 1000;
+      window.localStorage.setItem('krc.auth.session', JSON.stringify(session));
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    await expect(page, 'an open tour kept running past the session expiry').toHaveURL(/#\/login/, {
+      timeout: 15_000,
+    });
+  });
 });

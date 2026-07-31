@@ -32,12 +32,16 @@ const DISPLAY_NAMES: Record<string, string> = {
     retail: "RETAIL ZONE",
 };
 
-/** One on-screen signpost: the arrow asset plus the name it walks you to. */
+/**
+ * One on-screen signpost: the arrow asset plus the name it walks you to.
+ *
+ * Deliberately no x/y. The screen position is written straight onto the DOM
+ * node every frame (see the placement effect) rather than held in React state —
+ * see the comment there for why.
+ */
 interface Signpost {
     id: string;
     label: string;
-    x: number;
-    y: number;
     /** Degrees, straight from the tour data — points down the real corridor. */
     rotation: number;
 }
@@ -51,20 +55,14 @@ export default function Vr() {
     const [walking, setWalking] = useState(false);
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(false);
-    const [hovered, setHovered] = useState<{ label: string; x: number; y: number } | null>(null);
+    /** Destination whose name the pointer is currently over, if any. */
+    const [hoveredId, setHoveredId] = useState<string | null>(null);
 
     /**
-     * Where each destination's signpost sits on screen this frame.
-     *
-     * The floor rings alone were not readable on a tablet — nothing about a
-     * ring says "tap here to walk there", and visitors just stood still. The
-     * tour's original arrow-and-label signposts go back on top of them, which
-     * is the affordance people actually recognise.
+     * The signpost DOM nodes, keyed by destination, so the frame callback can
+     * move them without going through React.
      */
-    const [signposts, setSignposts] = useState<Signpost[]>([]);
-    /** Last frame we pushed to React, so a still camera costs nothing. */
-    const signpostsRef = useRef<Signpost[]>([]);
-    const lastSignpostPush = useRef(0);
+    const signpostNodes = useRef(new Map<string, HTMLButtonElement>());
 
     // Read inside engine callbacks, which are registered once.
     const scenesRef = useRef(scenes);
@@ -172,7 +170,7 @@ export default function Vr() {
             if (!engineRef || !target || engineRef.isTransitioning) return;
 
             setWalking(true);
-            setHovered(null);
+            setHoveredId(null);
             try {
                 // No arrival yaw/pitch: walking carries your heading with you,
                 // so the place you came from stays behind you. The distance is
@@ -198,13 +196,11 @@ export default function Vr() {
         engine.onMarkerActivate = (marker) => {
             walkTo(marker);
         };
+        // Hovering the floor around an arrow counts as hovering the arrow: the
+        // hit disc is far more generous than the 44 px image, and the name is
+        // what tells you where the arrow goes.
         engine.onMarkerHover = (marker) => {
-            if (!marker?.label) {
-                setHovered(null);
-                return;
-            }
-            const point = engine.projectMarker(marker);
-            setHovered(point.visible ? { label: marker.label, x: point.x, y: point.y } : null);
+            setHoveredId(marker?.id ?? null);
         };
         return () => {
             engine.onMarkerActivate = null;
@@ -258,63 +254,68 @@ export default function Vr() {
     }, [scene]);
 
     /**
-     * Re-project the signposts every frame.
+     * Which signposts exist, and how their arrows are turned.
      *
-     * They are DOM, but they have to track a 3D position through drag, zoom,
-     * auto-rotate and the walk animation — so the position is recomputed on the
-     * engine's own frame callback rather than on React state changes.
+     * This is the only part React renders, and it only changes when the scene
+     * does — the positions do not live here on purpose (see below).
+     */
+    const signposts = useMemo<Signpost[]>(
+        () =>
+            markers.map((m) => ({
+                id: m.id,
+                label: m.label || DISPLAY_NAMES[m.id] || m.id,
+                rotation: arrowRotations[m.id] ?? 0,
+            })),
+        [markers, arrowRotations]
+    );
+
+    /**
+     * Re-project the signposts every frame, straight onto their DOM nodes.
+     *
+     * The positions used to be React state, pushed from the frame callback and
+     * throttled to 30 Hz with whole-pixel rounding. That is what made the arrows
+     * flicker: the panorama redraws at the display's refresh rate, so the arrows
+     * were repainted at half that and snapped a pixel at a time, which reads as
+     * a shimmer against a smoothly moving background — worst of all during the
+     * slow auto-rotate, when the camera never stops.
+     *
+     * Writing `transform` on the node instead tracks the camera exactly, at
+     * sub-pixel precision, with no re-render at all — so there is nothing left
+     * to throttle and nothing to round.
      */
     useEffect(() => {
-        if (!engine) return;
+        if (!engine || !ready) return;
 
-        // Nothing to point at until a panorama is up, and during a walk the
-        // signposts would slide across a scene that is already dissolving.
-        if (!ready || walking) {
-            signpostsRef.current = [];
-            setSignposts([]);
-            return;
-        }
-
-        engine.onFrame = () => {
-            const next: Signpost[] = [];
+        const place = () => {
+            const placed = new Set<string>();
             for (const marker of engine.navigationMarkers) {
+                const node = signpostNodes.current.get(marker.id);
+                if (!node) continue;
+                placed.add(marker.id);
                 const point = engine.projectMarker(marker);
-                if (!point.visible) continue;
-                next.push({
-                    id: marker.id,
-                    label: marker.label || DISPLAY_NAMES[marker.id] || marker.id,
-                    // Whole pixels: sub-pixel jitter would re-render on a
-                    // camera that has effectively stopped moving.
-                    x: Math.round(point.x),
-                    y: Math.round(point.y),
-                    rotation: arrowRotations[marker.id] ?? 0,
-                });
+                if (!point.visible) {
+                    node.style.visibility = "hidden";
+                    continue;
+                }
+                // translate3d first, then centre on the point: the arrow is a
+                // fixed-size box, so the -50% cannot be folded into the pixels.
+                node.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -50%)`;
+                node.style.visibility = "visible";
             }
-
-            // Two guards, because this runs at display refresh rate and each
-            // push re-renders. Cap the rate, and skip entirely when the camera
-            // is still — which is most of the time a visitor is reading.
-            const now = performance.now();
-            if (now - lastSignpostPush.current < 33) return;
-
-            const previous = signpostsRef.current;
-            const unchanged =
-                previous.length === next.length &&
-                previous.every((p, i) => {
-                    const n = next[i];
-                    return p.id === n.id && p.x === n.x && p.y === n.y && p.rotation === n.rotation;
-                });
-            if (unchanged) return;
-
-            lastSignpostPush.current = now;
-            signpostsRef.current = next;
-            setSignposts(next);
+            // A node React has mounted but the engine does not know about yet
+            // must stay hidden, or it would sit in the top-left corner for a
+            // frame after a scene change.
+            signpostNodes.current.forEach((node, id) => {
+                if (!placed.has(id)) node.style.visibility = "hidden";
+            });
         };
 
+        place();
+        engine.onFrame = place;
         return () => {
-            engine.onFrame = null;
+            if (engine.onFrame === place) engine.onFrame = null;
         };
-    }, [engine, ready, walking, arrowRotations]);
+    }, [engine, ready, signposts]);
 
     // ── Keep the scenes one step away warm, so a walk never waits ──
     useEffect(() => {
@@ -363,45 +364,69 @@ export default function Vr() {
                 They sit over the floor rings rather than replacing them: the
                 ring is the target you walk onto, the arrow is what tells a
                 visitor there is somewhere to go and names it. Restored because
-                the rings on their own read as decoration on a tablet. */}
-            {!walking &&
-                signposts.map((s) => (
-                    <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                            const marker = engine?.navigationMarkers.find((m) => m.id === s.id);
-                            if (marker) walkTo(marker);
-                        }}
-                        aria-label={`Walk to ${s.label}`}
-                        // -translate-x-1/2 centres it on the ring; the arrow is
-                        // lifted clear of the ring so both stay readable.
-                        className="absolute z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 border-0 bg-transparent p-2 cursor-pointer transition-transform duration-200 hover:scale-110 active:scale-95"
-                        style={{ left: s.x, top: s.y }}
-                    >
-                        <img
-                            src="/VR/arrowfinal.png"
-                            alt=""
-                            draggable={false}
-                            className="w-9 h-9 select-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] md:w-11 md:h-11"
-                            style={{ transform: `rotate(${s.rotation}deg)` }}
-                        />
-                        <span className="whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm md:text-[11px]">
-                            {s.label}
-                        </span>
-                    </button>
-                ))}
+                the rings on their own read as decoration on a tablet.
 
-            {/* Name of the spot under the pointer. Only when the signposts are
-                not up — otherwise every destination is labelled twice. */}
-            {hovered && !walking && signposts.length === 0 && (
-                <div
-                    className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full bg-black/70 px-3 py-1.5 text-[11px] font-medium tracking-wide text-white backdrop-blur-sm md:text-xs"
-                    style={{ left: hovered.x, top: hovered.y - 18 }}
-                >
-                    {hovered.label}
-                </div>
-            )}
+                The whole layer fades out for the walk rather than unmounting:
+                the arrows keep their DOM nodes across the journey, so the frame
+                callback never has to wait for React to hand it new ones. */}
+            <div
+                className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-200"
+                style={{ opacity: walking ? 0 : 1 }}
+            >
+                {signposts.map((s) => {
+                    // The label follows the pointer's own arrow, whether hover
+                    // landed on this button or on the wider floor disc the
+                    // engine raycasts against.
+                    const named = hoveredId === s.id;
+                    return (
+                        <button
+                            key={s.id}
+                            type="button"
+                            ref={(el) => {
+                                if (el) signpostNodes.current.set(s.id, el);
+                                else signpostNodes.current.delete(s.id);
+                            }}
+                            onClick={() => {
+                                const marker = engine?.navigationMarkers.find((m) => m.id === s.id);
+                                if (marker) walkTo(marker);
+                            }}
+                            aria-label={`Walk to ${s.label}`}
+                            disabled={walking}
+                            // left/top stay at 0: the frame callback positions
+                            // this with `transform`, which is also what carries
+                            // the centring. Hidden until it has been placed.
+                            className="group pointer-events-auto absolute left-0 top-0 flex cursor-pointer flex-col items-center border-0 bg-transparent p-2"
+                            style={{ visibility: "hidden" }}
+                        >
+                            {/* Hover growth lives on this wrapper — the button's
+                                own transform is the position and cannot be
+                                shared. */}
+                            <span className="block transition-transform duration-200 group-hover:scale-110 group-active:scale-95">
+                                <img
+                                    src="/VR/arrowfinal.png"
+                                    alt=""
+                                    draggable={false}
+                                    className="w-9 h-9 select-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] md:w-11 md:h-11"
+                                    style={{ transform: `rotate(${s.rotation}deg)` }}
+                                />
+                            </span>
+                            {/* The name is a hover reveal: twelve arrows each
+                                shouting their destination buried the panorama.
+                                Absolutely positioned so appearing costs the
+                                arrow no layout shift. */}
+                            <span
+                                className={`pointer-events-none absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm transition-opacity duration-150 md:text-[11px] ${
+                                    named
+                                        ? "opacity-100"
+                                        : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+                                }`}
+                            >
+                                {s.label}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
 
             {/* First-paint cover — fades away as soon as the panorama is on the
                 sphere, so the route crossfade never reveals an empty canvas.

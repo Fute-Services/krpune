@@ -191,11 +191,9 @@ import {
   MdDesktopWindows,
   MdPeople,
   MdGroups,
-  MdMeetingRoom,
   MdDirectionsRun,
   MdWoman,
   MdMan,
-  MdAcUnit,
 } from 'react-icons/md';
 import { IconType } from 'react-icons';
 
@@ -241,7 +239,10 @@ const Fitout: React.FC<FitoutProps> = ({ isOpen = true, onClose }) => {
   const slideUpVariant = {
     initial: { y: '100%', opacity: 0 },
     animate: { y: 0, opacity: 1 },
-    transition: { type: 'spring', damping: 25, stiffness: 100 }
+    // `as const` so `type` narrows to the literal 'spring'. Without it the
+    // object widens to `type: string`, which is not assignable to framer's
+    // AnimationGeneratorType and errored at all three spread sites below.
+    transition: { type: 'spring', damping: 25, stiffness: 100 } as const
   };
 
   return (

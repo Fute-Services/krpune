@@ -19,8 +19,9 @@ import { useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Share, Smartphone, X, MonitorDown, Plus } from 'lucide-react';
 import { usePwaInstall } from '@/hooks/usePwaInstall';
-
-const DISMISS_KEY = 'krc.install.dismissed';
+// Owned by auth.ts because signOut() clears it — a dismissal lasts for that
+// visitor's session, not for every visitor after them on a shared device.
+import { INSTALL_DISMISSED_KEY as DISMISS_KEY } from '@/lib/auth';
 
 /** Never let a disabled/full localStorage crash the shell. */
 function readDismissed(): boolean {
@@ -45,6 +46,13 @@ export default function InstallPrompt() {
   const [visible, setVisible] = useState(false);
   const { pathname } = useLocation();
 
+  // On iOS the offline download does not start until the app is running from
+  // the Home Screen (see awaitingInstallProblem in offlineDownload.ts). So here
+  // this card is not an upsell — it is the only route to an offline app, and
+  // dismissing it would leave the device permanently online-only with nothing
+  // on screen to say why. Everywhere else × still means "not now".
+  const required = isIos && !isStandalone;
+
   // Home only. Signing in lands the visitor here, so the offer is still the
   // first thing they see — and an overlay that exists on exactly one screen
   // cannot sit on top of a control somewhere else. The first version of this
@@ -55,13 +63,13 @@ export default function InstallPrompt() {
   // Hold off briefly so the card animates in over a settled page rather than
   // competing with the route transition on first paint.
   useEffect(() => {
-    if (isStandalone || dismissed || !onHome) {
+    if (isStandalone || (dismissed && !required) || !onHome) {
       setVisible(false);
       return;
     }
     const timer = window.setTimeout(() => setVisible(true), 1500);
     return () => window.clearTimeout(timer);
-  }, [isStandalone, dismissed, onHome]);
+  }, [isStandalone, dismissed, onHome, required]);
 
   // Already running from the Home Screen — there is nothing left to install.
   if (isStandalone) return null;
@@ -155,9 +163,10 @@ export default function InstallPrompt() {
                   <li className="flex gap-2.5">
                     <Smartphone size={15} className="mt-0.5 shrink-0 text-[#90C7FF]" />
                     <span>
-                      Open it from the Home Screen and sign in there once — Safari and the installed
-                      app keep separate storage, so the offline download has to finish inside the
-                      app.
+                      Open it from the Home Screen and sign in there —{' '}
+                      <strong className="text-white">the download starts then</strong>. Safari and
+                      the installed app keep separate storage, so nothing saved here would carry
+                      over; that is why it waits.
                     </span>
                   </li>
                 </ol>
@@ -178,13 +187,17 @@ export default function InstallPrompt() {
               )}
             </div>
 
-            <button
-              onClick={close}
-              aria-label="Not now"
-              className="p-1 -m-1 shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-            >
-              <X size={18} />
-            </button>
+            {/* No dismiss on iOS-in-Safari: there is nothing else on screen
+                that would tell the visitor why the app never went offline. */}
+            {!required && (
+              <button
+                onClick={close}
+                aria-label="Not now"
+                className="p-1 -m-1 shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </motion.div>
       )}

@@ -41,6 +41,9 @@ export default function OfflineStatus() {
   const complete = progress.status === 'complete';
   const running = progress.status === 'running';
   const blocked = progress.status === 'insecure' || progress.status === 'unsupported';
+  // iOS in a Safari tab: the download is waiting for the app to be installed,
+  // which is a thing the visitor can act on — not a failure.
+  const awaitingInstall = progress.status === 'awaiting-install';
 
   return (
     <>
@@ -90,12 +93,14 @@ export default function OfflineStatus() {
         {complete && <Check size={15} className="text-emerald-400" />}
         {progress.status === 'error' && <CircleAlert size={15} className="text-amber-400" />}
         {blocked && <ShieldAlert size={15} className="text-amber-400" />}
+        {awaitingInstall && <Share size={15} className="text-[#90C7FF]" />}
         {progress.status === 'idle' && <Download size={15} className="text-white/70" />}
         <span>
           {running && `Saving offline · ${pct}%`}
           {complete && 'Available offline'}
           {progress.status === 'error' && 'Offline · incomplete'}
           {blocked && 'Offline unavailable'}
+          {awaitingInstall && 'Install to save offline'}
           {progress.status === 'idle' && 'Offline'}
         </span>
       </button>
@@ -125,28 +130,39 @@ export default function OfflineStatus() {
               </button>
             </div>
 
-            {/* Progress */}
-            <div className="mt-4">
-              <div className="flex justify-between text-xs text-white/55 mb-2">
-                <span>
-                  {progress.filesDone} / {progress.filesTotal} files
-                </span>
-                <span>
-                  {mb(progress.bytesDone)} / {mb(progress.bytesTotal)} MB
-                </span>
+            {/* Progress. Hidden while waiting on an iOS install — a bar sitting
+                at 0 / 137 reads as a stalled download rather than one that has
+                deliberately not started yet. */}
+            {!awaitingInstall && (
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-white/55 mb-2">
+                  <span>
+                    {progress.filesDone} / {progress.filesTotal} files
+                  </span>
+                  <span>
+                    {mb(progress.bytesDone)} / {mb(progress.bytesTotal)} MB
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: 'linear-gradient(90deg,#1C6CBC,#3b82f6)' }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.25 }}
+                  />
+                </div>
               </div>
-              <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: 'linear-gradient(90deg,#1C6CBC,#3b82f6)' }}
-                  animate={{ width: `${pct}%` }}
-                  transition={{ duration: 0.25 }}
-                />
-              </div>
-            </div>
+            )}
 
             {progress.message && (
-              <p className="mt-3 text-xs leading-relaxed text-amber-300/90">{progress.message}</p>
+              <p
+                className={`mt-3 text-xs leading-relaxed ${
+                  // Waiting on an install is an instruction, not a warning.
+                  awaitingInstall ? 'text-white/70' : 'text-amber-300/90'
+                }`}
+              >
+                {progress.message}
+              </p>
             )}
 
             {progress.failed.length > 0 && (
@@ -191,10 +207,9 @@ export default function OfflineStatus() {
                     <span>
                       To install on iPad: tap <strong className="text-white/80">Share</strong>, then
                       scroll <strong className="text-white/80">past the app icons</strong> and choose{' '}
-                      <strong className="text-white/80">Add to Home Screen</strong>. Open the app
-                      from the Home Screen and let it finish downloading there — Safari and the
-                      installed app keep separate storage, so anything saved while browsing does not
-                      carry over.
+                      <strong className="text-white/80">Add to Home Screen</strong>. Sign in from
+                      the Home Screen and the download starts there — Safari and the installed app
+                      keep separate storage, so it deliberately does not run here.
                     </span>
                   </div>
                 )}

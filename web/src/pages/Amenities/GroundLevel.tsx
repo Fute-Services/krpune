@@ -39,7 +39,9 @@ export default function GroundLevel() {
   const { scenes, loading } = useAmenitiesScenes("ground");
 
   const [activeScene, setActiveScene] = useState<Scene | null>(null);
-  const [fade, setFade] = useState(false);
+  // The value is never read — PanoramaViewer crossfades internally now — but
+  // the setter still drives the scene-switch bookkeeping below.
+  const [, setFade] = useState(false);
 
   // ✅ Set default scene when data arrives
   useEffect(() => {

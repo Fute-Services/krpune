@@ -4,7 +4,6 @@ import building from '../../assets/Overviewnew/sustainabilitybuilding.png';
 import tree from '../../assets/Overviewnew/sustree.png'
 import BackButton from './BackButton';
 import Logo from './Logo';
-import RightButton from './RightButton';
 
 
 const animationStyles = `

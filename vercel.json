@@ -1,9 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd web && npm install",
-  "buildCommand": "cd web && npm run build",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "web/dist",
   "framework": null,
+  "rewrites": [
+    {
+      "source": "/((?!media/|assets/|icons/|vendor/|VR/|sw\\.js|workbox-.*|manifest\\.webmanifest|logo\\.png|login-hero\\.jpg).*)",
+      "destination": "/index.html"
+    }
+  ],
   "headers": [
     {
       "source": "/media/(.*)",
@@ -20,6 +26,15 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
         }
       ]
     }

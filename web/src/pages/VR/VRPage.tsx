@@ -46,9 +46,41 @@ interface Signpost {
     rotation: number;
 }
 
+/**
+ * Whether this device has a pointer that can hover.
+ *
+ * On a touch tablet it cannot, and that is the device this tour ships on. The
+ * engine only raycasts for hover on a pointer that is *not* pressed
+ * (updateFloorHover, called from onPointerMove), and a finger is always
+ * pressed — so `hoveredId` never fires and CSS `:hover` never matches either.
+ * Measured on an emulated iPad: the destination name sat at opacity 0 before,
+ * during and after a tap on both engines. Twelve unlabelled arrows is the
+ * problem the labels were added to solve, so where hover does not exist the
+ * names are simply shown.
+ */
+function useCanHover(): boolean {
+    const [canHover, setCanHover] = useState(
+        () => typeof window === "undefined" || window.matchMedia?.("(hover: hover)").matches !== false,
+    );
+
+    useEffect(() => {
+        const query = window.matchMedia?.("(hover: hover)");
+        if (!query) return;
+        const sync = () => setCanHover(query.matches);
+        sync();
+        // An iPad gains a hovering pointer the moment a trackpad case is
+        // attached, and loses it again when it is removed.
+        query.addEventListener("change", sync);
+        return () => query.removeEventListener("change", sync);
+    }, []);
+
+    return canHover;
+}
+
 export default function Vr() {
     const navigate = useNavigate();
     const containerRef = useRef<HTMLDivElement>(null);
+    const canHover = useCanHover();
 
     const [scenes, setScenes] = useState<Record<string, PanoramaScene>>({});
     const [currentScene, setCurrentScene] = useState<string>("");
@@ -376,8 +408,10 @@ export default function Vr() {
                 {signposts.map((s) => {
                     // The label follows the pointer's own arrow, whether hover
                     // landed on this button or on the wider floor disc the
-                    // engine raycasts against.
-                    const named = hoveredId === s.id;
+                    // engine raycasts against. On a device that cannot hover
+                    // there is no such pointer, so every name is shown — see
+                    // useCanHover.
+                    const named = hoveredId === s.id || !canHover;
                     return (
                         <button
                             key={s.id}

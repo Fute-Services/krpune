@@ -53,6 +53,17 @@ export function url(path: string): string {
 }
 
 export async function gotoRoute(page: Page, path: string): Promise<void> {
+  // A goto to the URL we are already on is a reload, and reloading offline is
+  // where Playwright's WebKit build falls over — `page.goto`/`page.reload` to
+  // the current URL with the context offline throws "WebKit encountered an
+  // internal error" even though the worker has the document cached and
+  // navigating to a *different* route offline works fine on the same page.
+  // For a "visit every route" loop that reload was never the point, so skip it
+  // rather than let a harness limitation read as a broken offline app.
+  // Reload is covered on its own in offline.spec.ts.
+  const target = new URL(url(path), page.url()).href;
+  if (page.url() === target) return;
+
   await page.goto(url(path));
   await page.waitForLoadState('load');
 }
@@ -96,8 +107,11 @@ export async function assertReallyOffline(page: Page): Promise<void> {
 
 /**
  * Rule 31: cutting the network mid-download caches a partial set and the next
- * assertion fails for the wrong reason. Poll the cache entry count until it
- * stops growing, then stop.
+ * assertion fails for the wrong reason.
+ *
+ * Prefer the downloader's own "Available offline"; fall back to polling the
+ * cache entry count until it stops growing, for the callers and states where
+ * that pill never appears (a failed file leaves it on "Offline · incomplete").
  */
 export async function waitForCachingToSettle(
   page: Page,
@@ -108,13 +122,24 @@ export async function waitForCachingToSettle(
   let lastChange = Date.now();
 
   for (;;) {
-    const count = await page.evaluate(async () => {
-      if (!('caches' in window)) return 0;
-      const names = await caches.keys();
+    const { count, status } = await page.evaluate(async () => {
       let total = 0;
-      for (const name of names) total += (await (await caches.open(name)).keys()).length;
-      return total;
+      if ('caches' in window) {
+        const names = await caches.keys();
+        for (const name of names) total += (await (await caches.open(name)).keys()).length;
+      }
+      // The app's own verdict, which beats any heuristic about entry counts.
+      const pill = document.querySelector('[aria-label="Offline status"]');
+      return { count: total, status: pill?.textContent?.trim() ?? null };
     });
+
+    // Ask the downloader rather than guessing. The quiet-period fallback below
+    // measures "the entry count stopped growing", and writing a 100 MB video on
+    // a loaded machine looks exactly like that — so on a slow run it returned
+    // mid-download and the next test failed on an image that simply had not
+    // been fetched yet. "Available offline" is the downloader saying every file
+    // in the manifest is in the cache.
+    if (status === 'Available offline') return count;
 
     if (count !== last) {
       last = count;
@@ -332,6 +357,22 @@ export async function assertVideoLayout(page: Page, label: string): Promise<void
 
 export async function clearEverything(context: BrowserContext, page: Page): Promise<void> {
   await page.goto('/');
+  // Wait for the app to actually boot before doing anything else.
+  //
+  // `goto` resolves on `load`, which is before React has mounted. Returning
+  // then meant the caller's next navigation — a fragment-only one, e.g.
+  // goto('/#/') — landed while the main bundle was still being evaluated. On
+  // WebKit that interrupts the load and the page stays permanently blank: the
+  // auth-gate suite then failed with "home (/) should redirect" against an
+  // empty #root, which reads as a broken auth gate rather than a race in the
+  // reset helper. Chromium happened to survive the same sequence.
+  await page
+    .waitForFunction(() => (document.getElementById('root')?.childElementCount ?? 0) > 0, null, {
+      timeout: 15_000,
+    })
+    .catch(() => {
+      /* nothing rendered — leave it to the assertions in the test to say so */
+    });
   await page.evaluate(async () => {
     try {
       localStorage.clear();

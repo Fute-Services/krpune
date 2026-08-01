@@ -83,12 +83,15 @@ export default function ProjectDetails() {
 
         {/* About Us Overlay */}
         <div
+          // h-viewport (index.css) rather than an inline height: it carries the
+          // 100vh -> 100dvh fallback that an inline style cannot express, so the
+          // overlay stops running under Safari's toolbar on iOS.
+          className="h-viewport"
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             width: '100vw',
-            height: '100vh',
             zIndex: 1000,
             backgroundImage: `url(${AboutUsBg})`,
             backgroundSize: 'cover',

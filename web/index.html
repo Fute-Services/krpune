@@ -21,6 +21,21 @@
   <!-- Matches the manifest `name`. It shows in the tab, in the app switcher,
        and as the default label when the page is added to a Home Screen. -->
   <title>KRC Pune — Experience Centre</title>
+
+  <!-- iOS has no generated splash screen; without an explicit background the
+       Home Screen launch is a white flash before React paints. Matches the
+       manifest background_color. Cheaper and resolution-independent compared
+       with a set of apple-touch-startup-image files, one per device size. -->
+  <style>
+    /* Background and margin only. Sizing belongs to index.css, which loads
+       just after this and owns the 100vh -> 100dvh fallback; repeating a
+       min-height here would only be something to keep in sync. */
+    html,
+    body {
+      background: #05101f;
+      margin: 0;
+    }
+  </style>
 </head>
 
 <body>

@@ -12,13 +12,22 @@
  */
 import mediaManifest from './mediaManifest.json';
 import { isAuthenticated } from '@/lib/auth';
+import { detectIos, detectStandalone } from '@/hooks/usePwaInstall';
 
 /** Must match the runtimeCaching cacheName in vite.config.ts, or the service
  *  worker and this module would write to two different caches and the
  *  "already downloaded" check would always miss. */
 export const MEDIA_CACHE = 'krc-offline-media';
 
-export type OfflineStatus = 'idle' | 'unsupported' | 'insecure' | 'running' | 'complete' | 'error';
+export type OfflineStatus =
+  | 'idle'
+  /** iOS, in a Safari tab. See awaitingInstallProblem(). */
+  | 'awaiting-install'
+  | 'unsupported'
+  | 'insecure'
+  | 'running'
+  | 'complete'
+  | 'error';
 
 export interface OfflineProgress {
   status: OfflineStatus;
@@ -74,6 +83,24 @@ export function secureContextProblem(): string | null {
 }
 
 /**
+ * On iOS a Home Screen web app gets its own storage bucket, completely separate
+ * from the Safari tab it was installed from. Downloading the library in the tab
+ * therefore buys the installed app nothing — the visitor pulls ~450 MB, adds the
+ * app, opens it, and is asked to pull the same ~450 MB again.
+ *
+ * So on iOS we do not start until we are running standalone. The service worker
+ * still registers in the tab (the shell has to be cached for the Home Screen
+ * icon to have something to launch); only the media download waits.
+ *
+ * Android and desktop are unaffected: there the installed app and the browser
+ * share one storage bucket, so a download started in the tab carries over.
+ */
+export function awaitingInstallProblem(): string | null {
+  if (!detectIos() || detectStandalone()) return null;
+  return 'On iPad and iPhone the installed app has its own storage, so anything saved here would not carry over. Add this to your Home Screen first, then open it and sign in — the download starts there.';
+}
+
+/**
  * Ask the browser not to evict this origin. Chrome/Edge honour it; Safari
  * ignores it entirely and always resolves false, so on iOS/iPadOS there is no
  * way to protect cached data from eviction. We report the real answer rather
@@ -87,6 +114,70 @@ async function requestPersistentStorage(): Promise<boolean | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Refuse to start a ~450 MB download onto a device that cannot hold it.
+ *
+ * Without this the download runs for twenty minutes, dies partway with
+ * QuotaExceededError, and reports only "N file(s) could not be saved" — so the
+ * operator retries, and it fails at the same place every time. Naming the
+ * shortfall up front is the difference between "this is broken" and "free up
+ * 300 MB on this iPad".
+ *
+ * Returns null when the browser will not say (Safari under-reports and
+ * sometimes omits `estimate` altogether). An unknown quota is not a reason to
+ * block — it is a reason to try and let the per-file errors speak.
+ */
+async function quotaProblem(): Promise<string | null> {
+  if (!navigator.storage?.estimate) return null;
+  let quota: number | undefined;
+  let usage: number | undefined;
+  try {
+    ({ quota, usage } = await navigator.storage.estimate());
+  } catch {
+    return null;
+  }
+  if (!quota) return null;
+
+  // 15 % headroom: the precached shell also lives in this bucket, and browsers
+  // start evicting before the quota is literally exhausted.
+  const needed = mediaManifest.totalBytes * 1.15;
+  const free = quota - (usage ?? 0);
+  if (free >= needed) return null;
+
+  const mb = (n: number) => Math.round(n / 1024 / 1024);
+  return `This device has about ${mb(free)} MB of storage available for this app, and the offline library needs roughly ${mb(needed)} MB. Free up space and try again.`;
+}
+
+/**
+ * Reject a response that is drastically smaller than the manifest says it
+ * should be, *before* it is written to the cache.
+ *
+ * This exists because of a real failure that nothing else caught: the three
+ * videos under media/videos are tracked in Git LFS, Vercel's Git integration
+ * does not fetch LFS objects, and production served the 134-byte pointer text
+ * with `HTTP 200` and `Content-Type: video/mp4`. `response.ok` was true, so the
+ * pointer was cached as a success and the bar still landed on 100 % —
+ * "Available offline" while three pages played nothing. A size check is the
+ * only thing that can tell those two cases apart.
+ *
+ * Deliberately generous (half the expected size), and skipped entirely when the
+ * body arrived compressed or without a Content-Length: the goal is to catch a
+ * file that is not there at all, not to police byte-exact transfers.
+ */
+function sizeProblem(response: Response, expectedBytes: number): string | null {
+  // Content-Length would be the *encoded* length — comparing it against the
+  // on-disk size would fail every brotli'd JSON for no reason.
+  if (response.headers.get('content-encoding')) return null;
+
+  const header = response.headers.get('content-length');
+  if (header === null) return null; // chunked — nothing to compare against
+  const received = Number(header);
+  if (!Number.isFinite(received) || expectedBytes <= 0) return null;
+  if (received >= expectedBytes * 0.5) return null;
+
+  return `expected ~${expectedBytes} bytes, got ${received}`;
 }
 
 /**
@@ -108,14 +199,38 @@ async function requestPersistentStorage(): Promise<boolean | null> {
  * never held in memory. That costs byte-level progress within a single file,
  * which is why progress is credited per file instead.
  */
-async function downloadInto(cache: Cache, url: string): Promise<void> {
+async function downloadInto(cache: Cache, url: string, expectedBytes: number): Promise<void> {
   const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+
+  const problem = sizeProblem(response, expectedBytes);
+  if (problem) {
+    // A body this small is safe to read in full, and quoting it turns "a file
+    // failed" into "this is a Git LFS pointer" at a glance.
+    let detail = '';
+    const received = Number(response.headers.get('content-length'));
+    if (received > 0 && received < 1024) {
+      const text = await response.clone().text();
+      detail = ` — body begins: ${JSON.stringify(text.slice(0, 60))}`;
+    }
+    throw new Error(`${url}: ${problem}${detail}`);
+  }
+
   await cache.put(url, response);
 }
 
-async function alreadyCached(cache: Cache, url: string): Promise<boolean> {
-  return (await cache.match(url, { ignoreVary: true })) !== undefined;
+/**
+ * Size-checked too, so a device that cached a truncated file before this check
+ * existed re-downloads it instead of counting it as done forever.
+ */
+async function alreadyCached(cache: Cache, url: string, expectedBytes: number): Promise<boolean> {
+  const hit = await cache.match(url, { ignoreVary: true });
+  if (!hit) return false;
+  if (sizeProblem(hit, expectedBytes)) {
+    await cache.delete(url, { ignoreVary: true });
+    return false;
+  }
+  return true;
 }
 
 let running: Promise<OfflineProgress> | null = null;
@@ -142,23 +257,36 @@ export async function startOfflineDownload(): Promise<OfflineProgress> {
     return progress;
   }
 
+  const awaitingInstall = awaitingInstallProblem();
+  if (awaitingInstall) {
+    update({ status: 'awaiting-install', message: awaitingInstall });
+    return progress;
+  }
+
   running = (async () => {
     update({ status: 'running', failed: [], message: undefined });
 
     const persisted = await requestPersistentStorage();
     update({ persisted });
 
+    const tooSmall = await quotaProblem();
+    if (tooSmall) {
+      update({ status: 'error', message: tooSmall });
+      return progress;
+    }
+
     const cache = await caches.open(MEDIA_CACHE);
 
     let filesDone = 0;
     let bytesDone = 0;
     const failed: string[] = [];
+    let firstError = '';
 
     // Count what is already there first, so a resumed download shows a real
     // starting point instead of jumping from 0 %.
     const pending: typeof files = [];
     for (const file of files) {
-      if (await alreadyCached(cache, file.url)) {
+      if (await alreadyCached(cache, file.url, file.bytes)) {
         filesDone += 1;
         bytesDone += file.bytes;
       } else {
@@ -179,7 +307,7 @@ export async function startOfflineDownload(): Promise<OfflineProgress> {
         let lastError: unknown = null;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            await downloadInto(cache, file.url);
+            await downloadInto(cache, file.url, file.bytes);
             // Credited from the manifest, not from the wire, so the bar lands
             // exactly on 100 % regardless of transfer encoding.
             filesDone += 1;
@@ -194,6 +322,11 @@ export async function startOfflineDownload(): Promise<OfflineProgress> {
         }
         if (lastError) {
           failed.push(file.url);
+          // Keep the first real reason. "N files could not be saved" is not
+          // actionable on its own — the whole point of the size check is that
+          // it can say *why*, and "expected ~104892919 bytes, got 134" is a
+          // server-side problem no amount of retrying will fix.
+          if (!firstError) firstError = String((lastError as Error)?.message ?? lastError);
           update({ failed: [...failed] });
         }
       }
@@ -204,7 +337,7 @@ export async function startOfflineDownload(): Promise<OfflineProgress> {
     update({
       status: failed.length ? 'error' : 'complete',
       message: failed.length
-        ? `${failed.length} file(s) could not be saved. Reconnect and retry.`
+        ? `${failed.length} file(s) could not be saved. Reconnect and retry. First error: ${firstError}`
         : undefined,
     });
     return progress;

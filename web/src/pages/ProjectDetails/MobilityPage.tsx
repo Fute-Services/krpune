@@ -1,7 +1,4 @@
-import React, {
-  useState,
-  useRef, useCallback, useEffect
-} from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 // import zoningImg from '../../assets/mobility/zoneing.jpg';
 // import lowerZoneVid from '../../assets/mobility/lowerzone.mp4';

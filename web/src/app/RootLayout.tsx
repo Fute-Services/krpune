@@ -38,7 +38,10 @@ export const RootLayout = () => {
       )}
 
       <main
-        style={{ position: "relative", width: "100%", minHeight: "100vh" }}
+        // min-h-viewport (index.css) carries the 100vh -> 100dvh fallback that
+        // an inline style cannot express.
+        className="min-h-viewport"
+        style={{ position: "relative", width: "100%" }}
       >
         {/* Overlapping crossfade: the new page fades in ON TOP of the old one
             (both absolutely stacked), so the dark background never shows through

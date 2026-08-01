@@ -190,7 +190,7 @@
 //         </div>
 //     );
 // }
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCoverflow, Navigation } from 'swiper/modules';
 import { getGallery } from '@/data/offlineApi';
@@ -200,13 +200,29 @@ import 'swiper/css';
 import 'swiper/css/effect-coverflow';
 import 'swiper/css/navigation';
 
-import bgImage from '../../assets/gallery/gallery-bg.png';
 import BackButton from './BackButton';
+
+/** Shape of src/data/offline/gallery.json — what getGallery() resolves with. */
+interface GalleryImage {
+    _id: string;
+    image: string;
+    title: string;
+    /** Older records carried an absolute `url` instead of a local `image`. */
+    url?: string;
+}
+
+interface GalleryCategory {
+    _id: string;
+    category: string;
+    images: GalleryImage[];
+}
 
 export default function GalleryPage() {
     const [activeIndex, setActiveIndex] = useState(0);
     const [viewMode, setViewMode] = useState("exterior");
-    const [allImages, setAllImages] = useState([]);
+    // Typed explicitly: useState([]) infers never[], so every property access on
+    // an element below was an error and the data shape was unchecked.
+    const [allImages, setAllImages] = useState<GalleryCategory[]>([]);
 
     // Fetch data from API
     useEffect(() => {
@@ -328,7 +344,9 @@ export default function GalleryPage() {
         </button>
     </div>
 
-    <style tsx global>{`
+    {/* `tsx` and `global` are styled-jsx (Next.js) props. React has no idea
+        what they are and forwards them to the DOM, where they do nothing. */}
+    <style>{`
         .swiper-slide {
             transition: transform 1s cubic-bezier(0.2, 1, 0.3, 1), opacity 0.8s ease !important;
             opacity: 0.7;

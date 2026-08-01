@@ -1,5 +1,4 @@
-import React, { useRef, useEffect } from 'react';
-import { floorData } from '../../data/FloorData';
+import { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface FloorTableProps {

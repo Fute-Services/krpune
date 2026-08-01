@@ -122,6 +122,36 @@ if (!existsSync(swPath)) {
   }
 }
 
+// ─── 5b. No Git LFS pointers shipped instead of real media ───────────────────
+// public/media/videos/*.mp4 is tracked in Git LFS. A checkout without the LFS
+// objects (Vercel's Git integration does not fetch them) leaves a ~134 byte
+// text pointer in place of the video. It serves as HTTP 200 video/mp4, the
+// offline downloader caches it as a success, and the bar still reaches 100 % —
+// the page simply plays nothing. Production shipped exactly this.
+{
+  const POINTER = 'version https://git-lfs.github.com';
+  const pointers = [];
+  for (const f of distFiles) {
+    const full = join(dist, f.slice(1));
+    if (statSync(full).size > 1024) continue; // a pointer is ~130 bytes
+    let head;
+    try {
+      head = readFileSync(full, 'utf8').slice(0, POINTER.length);
+    } catch {
+      continue; // unreadable as text — not a pointer
+    }
+    if (head === POINTER) pointers.push(f);
+  }
+  if (pointers.length) {
+    fail(
+      `${pointers.length} file(s) are Git LFS pointers, not real content — run \`git lfs pull\` before building:`,
+    );
+    for (const p of pointers) console.error(`          ${p}`);
+  } else {
+    pass('no Git LFS pointer files in dist (all media is real content)');
+  }
+}
+
 // ─── 6. Nothing oversized was silently dropped ───────────────────────────────
 {
   const LIMIT = 25 * 1024 * 1024; // must match maximumFileSizeToCacheInBytes

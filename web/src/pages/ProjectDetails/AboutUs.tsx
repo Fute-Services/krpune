@@ -6,11 +6,12 @@ interface AboutUsProps {
 import { useState } from 'react';
 import ButtonDiv from '@/components/ButtonDiv';
 import brochurePdf from '../../assets/broucher/KRC.pdf';
-export default function AboutUs({ handleClose, handleOpen }: AboutUsProps) {
+// handleOpen stays in AboutUsProps because callers still pass it; nothing in
+// here opens itself, so it is not destructured.
+export default function AboutUs({ handleClose }: AboutUsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const toggleExpanded = () => setIsExpanded(!isExpanded);
   const previewHeight = 'max-h-[8rem]';
-  const fullHeight = 'max-h-screen';
 
   return (
     <div className="h-screen w-screen relative justify-center p-8">

@@ -30,6 +30,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: rgba(0, 0, 0, 0.85);
   display: flex;
   justify-content: center;
@@ -62,6 +63,33 @@
   margin: 0;
   color: #333;
   font-size: 1.2rem;
+}
+
+.pdf-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The iOS escape hatch — see the comment at its call site. Sized to the 44 px
+   minimum touch target so it is comfortable on a tablet. */
+.pdf-open-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: #1C6CBC;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: filter 0.2s ease;
+}
+
+.pdf-open-btn:hover {
+  filter: brightness(1.1);
 }
 
 .pdf-close-btn {

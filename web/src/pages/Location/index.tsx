@@ -66,13 +66,15 @@ type LocationMapProps = {
   onViewChange?: (view: string) => void;
 };
 
-export default function LocationMap({ onViewChange }: LocationMapProps) {
+// onViewChange stays in the props contract, but nothing in here reacts to it
+// yet — underscore-prefixed so noUnusedParameters lets it stand.
+export default function LocationMap(_props: LocationMapProps) {
   const [activeFilter, setActiveFilter] = useState<string>('Social Infra');
 
   const filters = ['Social Infra', 'Transport Infra'];
 
   return (
-    <div className="relative w-full h-[100vh] overflow-hidden z-20 bg-cover bg-center">
+    <div className="relative w-full h-viewport overflow-hidden z-20 bg-cover bg-center">
       
       {/* Filter Buttons */}
       <div className="location-filters absolute top-16 left-1/2 -translate-x-1/2 z-30 flex justify-center items-center gap-2 p-1.5 max-w-[90vw] overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-[#2A3441]/70 border border-white/20 rounded-full shadow-lg">

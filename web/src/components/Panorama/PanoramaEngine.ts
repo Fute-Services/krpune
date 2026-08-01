@@ -185,6 +185,10 @@ export default class PanoramaEngine {
     private readonly floorMarkers: FloorMarkers;
     private readonly raycaster = new THREE.Raycaster();
     private readonly pointerNdc = new THREE.Vector2();
+    // Reused by toScreen(), which runs once per marker per frame — allocating
+    // there would churn a couple of thousand Vector3s a second.
+    private readonly scratchProject = new THREE.Vector3();
+    private readonly scratchForward = new THREE.Vector3();
     /** Where the pointer went down, to tell a click apart from a drag. */
     private pressAt: { x: number; y: number } | null = null;
     /** Distance travelled in the journey currently under way, in world units. */
@@ -746,18 +750,43 @@ export default class PanoramaEngine {
         }
     }
 
+    /**
+     * Scene-space point → viewport pixels, with an honest visibility test.
+     *
+     * `projected.z < 1` is not one, which is what this used to rely on.
+     * `Vector3.project` divides by the clip-space w, and for a point *behind*
+     * the camera that w is negative: the divide flips x and y and can still
+     * leave z under 1. A marker passing close to the camera plane therefore
+     * reported itself visible with coordinates like x = 178529 — so the VR
+     * signpost overlay parked an arrow 178 000 px off-screen, still
+     * `visibility: visible`, instead of hiding it. (Caught by the arrow-hover
+     * test timing out: Playwright cannot scroll such an element into view.)
+     *
+     * Two tests instead. The point has to be in front of the camera — a dot
+     * product against the view direction, which no sign flip can fake — and it
+     * has to land inside the frustum. The margin keeps an arrow at the edge of
+     * view half on screen rather than popping out the instant it touches the
+     * boundary.
+     */
+    private toScreen(point: THREE.Vector3): ScreenPoint {
+        this.camera.getWorldDirection(this.scratchForward);
+        const ahead =
+            this.scratchProject.copy(point).sub(this.camera.position).dot(this.scratchForward) > 0;
+
+        const ndc = this.scratchProject.copy(point).project(this.camera);
+        // ~10 % past the edge of the frustum.
+        const MARGIN = 1.2;
+        return {
+            x: (ndc.x * 0.5 + 0.5) * this.container.clientWidth,
+            y: (-ndc.y * 0.5 + 0.5) * this.container.clientHeight,
+            visible:
+                ahead && ndc.z < 1 && Math.abs(ndc.x) <= MARGIN && Math.abs(ndc.y) <= MARGIN,
+        };
+    }
+
     /** Project a scene-space direction to viewport pixels, for DOM overlays. */
     project(pitch: number, yaw: number): ScreenPoint {
-        const point = this.lookDirection(yaw + this.yawOffset, pitch).multiplyScalar(RADIUS);
-        const projected = point.project(this.camera);
-        const width = this.container.clientWidth;
-        const height = this.container.clientHeight;
-        return {
-            x: (projected.x * 0.5 + 0.5) * width,
-            y: (-projected.y * 0.5 + 0.5) * height,
-            // z ≥ 1 means the point is behind the camera or past the far plane.
-            visible: projected.z < 1,
-        };
+        return this.toScreen(this.lookDirection(yaw + this.yawOffset, pitch).multiplyScalar(RADIUS));
     }
 
     // ── Zoom ──────────────────────────────────────────────────────────────
@@ -922,12 +951,7 @@ export default class PanoramaEngine {
 
     /** Screen position of a marker, for placing a DOM label over it. */
     projectMarker(marker: Marker): ScreenPoint {
-        const projected = marker.position.clone().project(this.camera);
-        return {
-            x: (projected.x * 0.5 + 0.5) * this.container.clientWidth,
-            y: (-projected.y * 0.5 + 0.5) * this.container.clientHeight,
-            visible: projected.z < 1,
-        };
+        return this.toScreen(marker.position);
     }
 
     /** Point the pointer with the camera, ready for a raycast. */

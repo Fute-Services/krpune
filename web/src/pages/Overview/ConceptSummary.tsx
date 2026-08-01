@@ -3,7 +3,6 @@ import building from '../../assets/Overviewnew/conceptsummarybuilding.png';
 import bgImage from '../../assets/Overviewnew/Concept summarynew.png'
 import Logo from './Logo';
 import BackButton from './BackButton';
-import RightButton from './RightButton';
 
 
 const animationStyles = `

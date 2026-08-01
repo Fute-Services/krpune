@@ -33,6 +33,26 @@ test.describe('brochure', () => {
     expect(covering, `something is sitting on top of the brochure button: ${covering}`).toBeNull();
   });
 
+  test('the home brochure modal offers a way out of the iframe', async ({ page }) => {
+    // iOS Safari renders an iframed PDF as one unscrollable page, so on the
+    // iPad this modal shows the cover and nothing else. "Open full screen"
+    // hands the file to the OS viewer instead. It has to point at the PDF
+    // itself — anything else silently reintroduces the same dead end.
+    await login(page);
+    await page.goto(url('/'));
+    await page.waitForTimeout(2500);
+
+    await page.getByRole('button', { name: /Corporate Profile/i }).first().click();
+
+    const open = page.getByRole('link', { name: /Open full screen/i });
+    await expect(open, 'no full-screen escape hatch in the brochure modal').toBeVisible();
+    await expect(open).toHaveAttribute('href', /\.pdf$/);
+    await expect(open).toHaveAttribute('target', '_blank');
+
+    // The embed stays for the platforms where it works.
+    await expect(page.locator('.pdf-container iframe')).toHaveCount(1);
+  });
+
   test('clicking it fetches the brochure PDF', async ({ page, context }) => {
     const pdfRequests: string[] = [];
     context.on('request', (r) => {

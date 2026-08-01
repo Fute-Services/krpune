@@ -212,9 +212,7 @@
 
 // export default ProjectInfo;
 
-import React from 'react';
 import { motion, Variants } from 'framer-motion';
-import Sidebar from "../Sidebar/Sidebar";
 import BackButton from './BackButton';
 import info1 from "../../assets/info1.png";
 import info2 from "../../assets/info2.png";

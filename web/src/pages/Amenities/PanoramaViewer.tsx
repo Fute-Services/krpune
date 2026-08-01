@@ -34,6 +34,12 @@ export default function PanoramaViewer({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const shown = useRef(false);
 
+  // false on iPad/iPhone Safari, which exposes the Fullscreen API for <video>
+  // only. A browser capability, so it never changes for the life of the page —
+  // no state or effect needed.
+  const canFullscreen =
+    typeof document !== 'undefined' && document.fullscreenEnabled === true;
+
   const engine = usePanoramaEngine(mountRef, {
     fov,
     minFov: 30,
@@ -44,10 +50,6 @@ export default function PanoramaViewer({
     autoRotateDelay: 3000,
     textureCacheSize: 3,
   });
-
-  useEffect(() => {
-    loadManifest();
-  }, []);
 
   useEffect(() => {
     engine?.setAutoRotate(autoRotate);
@@ -61,6 +63,15 @@ export default function PanoramaViewer({
     setIsLoading(true);
 
     (async () => {
+      // Must be awaited, not fired-and-forgotten from a mount effect.
+      // resolveSource() falls back to the *original* URL whenever the manifest
+      // has not arrived yet — and those originals are deliberately left out of
+      // the offline media manifest, because an optimized sibling supersedes
+      // them. So losing this race meant a 404 and a black viewer with the
+      // network off. VRPage awaits it for the same reason.
+      await loadManifest();
+      if (cancelled) return;
+
       const source = resolveSource(imageUrl);
       try {
         if (!shown.current) {
@@ -97,18 +108,32 @@ export default function PanoramaViewer({
 
   const toggleFullscreen = () => {
     const el = mountRef.current?.parentElement;
+    // iOS Safari implements the Fullscreen API for <video> only — on an iPad
+    // `el.requestFullscreen` is undefined, so calling it throws a TypeError
+    // *synchronously* and the .catch() below never gets the chance to run.
+    // Feature-detect rather than assume; canFullscreen also hides the button,
+    // so this is belt and braces.
     if (!document.fullscreenElement) {
-      el?.requestFullscreen().then(() => setIsFullscreen(true)).catch(console.error);
+      if (typeof el?.requestFullscreen !== 'function') return;
+      el.requestFullscreen().then(() => setIsFullscreen(true)).catch(console.error);
     } else {
+      if (typeof document.exitFullscreen !== 'function') return;
       document.exitFullscreen().then(() => setIsFullscreen(false)).catch(console.error);
     }
   };
+
+  // Every caller asks for the full viewport. Hand that case to the h-viewport
+  // class (index.css) instead of an inline height, so it gets the
+  // 100vh -> 100dvh fallback and stops running under Safari's toolbar on iOS.
+  // An inline style can only carry one value, and a bare "100dvh" would
+  // collapse the container to zero height on anything older than iOS 15.4.
+  const fullViewport = height === "100vh" || height === "100dvh";
 
   const styles: Record<string, React.CSSProperties> = {
     wrapper: {
       position: "relative",
       width,
-      height,
+      height: fullViewport ? undefined : height,
       background: "#000000",
       overflow: "hidden",
       fontFamily: "sans-serif",
@@ -141,7 +166,7 @@ export default function PanoramaViewer({
   };
 
   return (
-    <div style={styles.wrapper}>
+    <div className={fullViewport ? "h-viewport" : undefined} style={styles.wrapper}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <div ref={mountRef} style={styles.canvas} />
 
@@ -157,7 +182,12 @@ export default function PanoramaViewer({
         <div style={styles.controls}>
           <button style={styles.btn} onClick={() => zoom(-1)}>+</button>
           <button style={styles.btn} onClick={() => zoom(1)}>−</button>
-          <button style={styles.btn} onClick={toggleFullscreen}>{isFullscreen ? "⊠" : "⛶"}</button>
+          {/* Hidden where the API does not exist (iPad/iPhone Safari). A button
+              that can only ever do nothing is worse than no button — and the
+              panorama already fills the viewport there. */}
+          {canFullscreen && (
+            <button style={styles.btn} onClick={toggleFullscreen}>{isFullscreen ? "⊠" : "⛶"}</button>
+          )}
         </div>
       )}
     </div>

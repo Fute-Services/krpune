@@ -152,12 +152,25 @@ export async function signIn(email: string, password: string): Promise<Session> 
   return session;
 }
 
+/**
+ * Written by InstallPrompt when the visitor taps ×. Cleared here because this
+ * is a shared experience-centre device: without it, the first person to dismiss
+ * the install card silences it for every visitor after them, on a device none
+ * of them own. A dismissal should last for that visitor's session, not forever.
+ */
+export const INSTALL_DISMISSED_KEY = 'krc.install.dismissed';
+
 export function signOut(): void {
   if (expiryTimer !== null) {
     window.clearTimeout(expiryTimer);
     expiryTimer = null;
   }
   safeWrite(null);
+  try {
+    window.localStorage.removeItem(INSTALL_DISMISSED_KEY);
+  } catch {
+    /* storage unavailable — the flag could not have been written either */
+  }
   emit(null);
 }
 

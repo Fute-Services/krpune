@@ -21,17 +21,48 @@ npm run preview # serve the production build locally
 Deployment is driven by `../vercel.json` at the repository root:
 
 - Install: `cd web && npm install`
-- Build: `cd web && npm run build`
+- Build: `bash scripts/vercel-build.sh` → pulls Git LFS, proves the videos are
+  real, then runs `npm run build` and `npm run verify:build`
 - Output: `web/dist`
+- Rewrites: everything that is not a real asset path falls back to
+  `/index.html`. The app uses hash routing so it never produces such a URL
+  itself, but a client typing `/vr` got a raw 404 before this.
 
 `vite.config.ts` uses `base: '/'` because the app is served from the domain
 root. (The desktop build uses `base: './'` so it works over `file://`.)
 
-SPA routing fallbacks ship in `public/`: `_redirects` (Netlify-style) and
-`web.config` (IIS). `public/vercel.json` sets long-lived cache headers for
-`/media` and `/assets`.
+### Git LFS — the one thing that will break a deploy
 
-> Note: `public/media` is ~510 MB (full-resolution panoramas and videos), the
+`public/media/videos/*.mp4` is tracked in Git LFS, and **Vercel's Git
+integration does not fetch LFS objects**. Without intervention the deploy ships
+~134 byte pointer files that serve as `HTTP 200 video/mp4`: the offline
+downloader caches them as a success, the progress bar still reaches 100 %, and
+`/#/walkthrough`, `/#/construction` and `/#/circulation-plan` play nothing.
+Production shipped exactly that, and no local check could see it — the Windows
+and Linux checkouts both have the real files, so the build, `verify:build` and
+the whole Playwright suite passed against real videos.
+
+Three defences now exist, deliberately at different layers:
+
+1. `scripts/vercel-build.sh` runs `git lfs pull` (authenticated with the
+   `GITHUB_TOKEN` project env var) and **fails the build** if any video is still
+   a pointer.
+2. `npm run verify:build` refuses any `dist/` file that begins with
+   `version https://git-lfs.github.com`.
+3. `offlineDownload.ts` rejects a response drastically smaller than the media
+   manifest says it should be, so a truncated file lands in `failed[]` instead
+   of being cached as complete.
+
+After any deploy, confirm against the deployed URL rather than localhost:
+
+```bash
+for f in walkthrough construction circulation; do
+  curl -sI https://<deployment>/media/videos/$f.mp4 | grep -i content-length
+done
+# expect 104892919 / 67170726 / 1052342
+```
+
+> Note: `public/media` is ~560 MB (full-resolution panoramas and videos), the
 > same assets the offline desktop kiosk bundles. Expect slow deploys and heavy
 > first loads until these are compressed or moved to a CDN.
 
@@ -89,10 +120,39 @@ a cached full response into the `206`s that `<video>` seeking needs offline.
   iOS-only hint, never a dead button.
 - Safari ignores `navigator.storage.persist()`. There is no way to stop iOS
   evicting the cache; the UI says so instead of promising otherwise.
-- Safari and the installed app have **separate storage**. Testers must install
-  first, then let the download run inside the app.
+- Safari and the installed app have **separate storage**, so on iOS the media
+  download **does not start in a Safari tab at all** — it waits for the app to
+  be running standalone (`awaitingInstallProblem()` in `offlineDownload.ts`).
+  The service worker still registers in the tab, because the Home Screen icon
+  needs a cached shell to launch. Without this the visitor pulled ~450 MB in
+  Safari, installed, and was asked for the same ~450 MB again. The install card
+  is not dismissible on iOS-in-Safari for the same reason: dismissing it would
+  leave the device permanently online-only with nothing on screen to say why.
+- iOS Safari implements the Fullscreen API for `<video>` only.
+  `Element.requestFullscreen` is undefined there and throws *synchronously*, so
+  `PanoramaViewer` feature-detects it and hides the button rather than shipping
+  one that can only fail.
+- `100vh` is the visible viewport *minus* Safari's toolbars, so full-height
+  pages run underneath them. Use the `h-viewport` / `min-h-viewport` utilities
+  in `index.css`, which carry a `100vh` → `100dvh` fallback that neither a
+  Tailwind arbitrary value nor an inline style can express.
+- **Nothing on a tablet can hover**, and two features quietly depended on it:
+  - The VR arrow destination names were a hover reveal. The engine only
+    raycasts for hover on a pointer that is *not* pressed, and a finger is
+    always pressed, so the name sat at opacity 0 before, during and after a
+    tap — twelve unlabelled arrows, which is what the labels exist to prevent.
+    `useCanHover()` in `VRPage.tsx` shows them outright where
+    `(hover: hover)` is false, and keeps the reveal on a mouse.
+  - The brochure is an `<iframe>` of a PDF, which iOS Safari renders as one
+    unscrollable page. The modal now also offers **Open full screen**, which
+    hands the file to the OS viewer. That works offline: the PDF is precached
+    and the worker's precache route answers the navigation ahead of
+    `navigateFallback`, so it does not get `index.html` instead.
 - Over plain `http://192.168.x.x` nothing registers and nothing caches. The app
   detects the insecure context and says so rather than failing silently.
+- The download refuses to start when `navigator.storage.estimate()` reports less
+  free space than the library needs, and names the shortfall — otherwise it ran
+  for twenty minutes and died with an unactionable "N files could not be saved".
 
 ## Checks
 

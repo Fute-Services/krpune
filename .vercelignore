@@ -4,6 +4,12 @@
 # web/ source and web/public assets need to travel.
 
 node_modules
+
+# NOTE: this only applies to `vercel` CLI uploads. Production deploys come from
+# the GitHub integration, where Vercel clones the repo itself and .git IS
+# present — which is what lets scripts/vercel-build.sh run `git lfs pull`.
+# A CLI deploy has no .git, so the LFS videos cannot be fetched and the build
+# script will stop rather than ship pointer files. Deploy via git push.
 .git
 
 # Build output — Vercel rebuilds these

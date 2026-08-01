@@ -22,6 +22,15 @@ import { login, url } from './helpers';
  */
 const ARROWS = 'button[aria-label^="Walk to"]:visible';
 
+/**
+ * Every signpost the current scene mounted, on screen or not.
+ *
+ * The destinations a scene offers do not depend on where the camera is
+ * pointing, so this is the right locator for "did the tour move" — see the
+ * comment in that test for how `:visible` made it pass for the wrong reason.
+ */
+const ALL_ARROWS = 'button[aria-label^="Walk to"]';
+
 /** The label inside a signpost. The other span only wraps the artwork. */
 const nameOf = (arrow: Locator) => arrow.locator('span', { hasText: /\S/ }).last();
 
@@ -97,20 +106,86 @@ test.describe('VR signposts', () => {
     const idle = await onVisibleArrow(page, opacity, 'no arrow signpost came into view');
     expect(idle, 'the destination name is showing before anything was hovered').toBe('0');
 
-    const hovered = await onVisibleArrow(
-      page,
-      async (arrow) => {
-        await arrow.hover({ force: true, timeout: 3_000 });
-        // The reveal is a 150 ms fade, and reading it in the same tick as the
-        // hover returns the fade's starting value rather than its end.
-        await page.waitForTimeout(400);
-        const shown = await opacity(arrow);
-        if (shown !== '1') throw new Error(`name still at opacity ${shown}`);
-        return shown;
-      },
-      'hovering an arrow never revealed its destination name',
-    );
-    expect(hovered, 'hovering the arrow left its destination name hidden').toBe('1');
+    // Hover, then poll — do not sample once after a fixed wait.
+    //
+    // The arrow tracks a camera rotating at 5°/s, which at this FOV carries it
+    // about 27 px in 400 ms across a 60 px button. So a cursor parked at the
+    // centre sits inside the button, then near its edge, then outside it, and a
+    // single reading 400 ms later catches the reveal at 1, mid-fade, or already
+    // faded back out depending on where in that drift it lands. Measured: four
+    // consecutive attempts read 0.03, 0.82, 0, 1.
+    //
+    // Re-hovering each lap keeps the pointer on the arrow the way a real one
+    // would follow it, and polling asserts the actual claim — that hovering
+    // reveals the name — instead of asserting it is still revealed at one
+    // arbitrary instant.
+    const arrow = page.locator(ARROWS).first();
+    await expect
+      .poll(
+        async () => {
+          try {
+            await arrow.hover({ force: true, timeout: 3_000 });
+            // The reveal is a 150 ms fade; give it room to finish.
+            await page.waitForTimeout(200);
+            return await opacity(arrow);
+          } catch (error) {
+            // Returned, not swallowed, so it lands in the `Received:` line.
+            // The original helper caught everything and returned false, so a
+            // 90 s timeout was the entire report and the reason never got out.
+            return `threw: ${String((error as Error).message).split('\n')[0]}`;
+          }
+        },
+        {
+          message: 'hovering an arrow never revealed its destination name',
+          timeout: LAP_MS,
+        },
+      )
+      .toBe('1');
+  });
+
+  test('on a touch device the names are shown, because nothing can hover', async ({ browser }) => {
+    // The tour ships on an iPad. The engine only raycasts for hover on a
+    // pointer that is not pressed, and a finger is always pressed — so
+    // `hoveredId` never fires there, and CSS :hover never matches either.
+    // Before this was handled, the destination name sat at opacity 0 before,
+    // during and after a tap on both engines: twelve unlabelled arrows, which
+    // is the problem the labels exist to solve.
+    const context = await browser.newContext({
+      viewport: { width: 1180, height: 820 },
+      hasTouch: true,
+    });
+    const touchPage = await context.newPage();
+    try {
+      expect(
+        await touchPage.evaluate(() => matchMedia('(hover: hover)').matches),
+        'this context is supposed to be a touch device',
+      ).toBe(false);
+
+      await login(touchPage);
+      await touchPage.goto(url('/vr'));
+      await touchPage.waitForTimeout(9000);
+
+      const arrow = touchPage.locator(ARROWS).first();
+      await expect
+        .poll(
+          async () => {
+            try {
+              return await nameOf(arrow).evaluate((el) => getComputedStyle(el).opacity, undefined, {
+                timeout: 3_000,
+              });
+            } catch (error) {
+              return `threw: ${String((error as Error).message).split('\n')[0]}`;
+            }
+          },
+          {
+            message: 'no arrow showed its destination name without being hovered',
+            timeout: LAP_MS,
+          },
+        )
+        .toBe('1');
+    } finally {
+      await context.close();
+    }
   });
 
   /**
@@ -182,11 +257,21 @@ test.describe('VR signposts', () => {
 
     // The walk animation runs, then the new scene publishes its own signposts.
     // Arriving somewhere else means the set of destinations changes.
+    //
+    // Every mounted signpost, not just the visible ones. "The set of
+    // destinations" is a property of the scene; which of them the camera
+    // happens to be facing is not. Polling `:visible` made this pass by
+    // accident: arrows behind the camera used to be left visible at nonsense
+    // coordinates, which padded the joined string so it never equalled a
+    // single label. Once projectMarker started hiding them properly, the
+    // visible set was often just one arrow — and on the way back from
+    // Reception that one is "Walk to Entry Gate", identical to `destination`,
+    // so a tour that had moved correctly reported that it had not.
     await expect
       .poll(
         () =>
           page
-            .locator(ARROWS)
+            .locator(ALL_ARROWS)
             .evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')).join('|')),
         {
           message: `tapping "${destination}" did not move the tour`,

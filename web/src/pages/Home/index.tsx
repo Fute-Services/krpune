@@ -271,13 +271,11 @@
 // };
 
 // export default Home;
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import ThemeToggle from '../../components/DayNightToggle/DayNightToggle';
 import LocationMap from '../Location/index';
 import logo from '../../assets/logo.png';
 import { useNavigate } from "react-router-dom";
-import blueprint from '../../assets/raheja_blueprint_new.jpeg';
-import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import broucher from '../../assets/broucher.png'
 import brochurePdf from '../../assets/broucher/KRC.pdf';
@@ -293,20 +291,10 @@ const Home = () => {
   const [showPdfModal, setShowPdfModal] = useState(false);
 
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [showMetrics, setShowMetrics] = useState(false);
 
   const toggleTheme = () => {
     setIsNight(!isNight);
   };
-
-  const properties = [
-    { floor: "1", unit: "1401", image: blueprint },
-    { floor: "2", unit: "1502", image: blueprint },
-    // ... rest of your properties
-  ];
 
   return (
     <div className="home-page">
@@ -433,7 +421,25 @@ const Home = () => {
           <div className="pdf-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="pdf-modal-header">
               <h3>Corporate Profile</h3>
-              <button className="pdf-close-btn" onClick={() => setShowPdfModal(false)}>×</button>
+              <div className="pdf-modal-actions">
+                {/* iOS Safari renders an iframed PDF as a single unscrollable
+                    page, so on an iPad the embed below shows the cover and
+                    nothing else. Rather than swap in a PDF renderer, give every
+                    platform the same escape hatch: open the file itself, where
+                    the OS viewer handles scrolling, zoom, share and print.
+                    Verified to work offline — the PDF is precached and the
+                    worker's precache route answers this navigation ahead of
+                    navigateFallback, so it does not get index.html instead. */}
+                <a
+                  className="pdf-open-btn"
+                  href={brochurePdf}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open full screen
+                </a>
+                <button className="pdf-close-btn" onClick={() => setShowPdfModal(false)}>×</button>
+              </div>
             </div>
             <div className="pdf-container">
               <iframe

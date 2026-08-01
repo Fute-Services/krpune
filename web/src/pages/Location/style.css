@@ -2,6 +2,9 @@
   position: relative;
   width: 100%;
   height: 100vh;
+  /* dvh tracks the visible viewport, so the page does not run under Safari's
+     toolbar on iOS. The vh line above remains the fallback. */
+  height: 100dvh;
   z-index: 20;
 
   background-size: cover;

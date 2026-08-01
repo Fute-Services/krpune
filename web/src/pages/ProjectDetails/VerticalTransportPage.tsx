@@ -160,6 +160,9 @@ const VerticalTransportPage = () => {
               autoPlay
               loop
               muted
+              // Without this iOS refuses the autoplay and hands the clip to the
+              // native fullscreen player instead of showing it in the layout.
+              playsInline
             >
               <source src={activeSection.video} type="video/mp4" />
             </video>
@@ -228,7 +231,10 @@ const VerticalTransportPage = () => {
                 const isActive = section?._id === activeSection?._id;
                 return (
                   <button
-                    key={section.id}
+                    // _id, not id — Transport has no `id`, so this key was
+                    // undefined for every button and React silently fell back
+                    // to the array index.
+                    key={section._id}
                     onClick={() => handleSelect(section)}
                     style={{
                       backgroundColor: isActive ? '#0ea4e99d' : '#5ebfe9a0',

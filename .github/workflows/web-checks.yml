@@ -1,0 +1,56 @@
+name: Web checks
+
+# Static checks for the web/ PWA. Runs on every push and PR that touches it.
+#
+# `npm run typecheck` used to report 150 errors, so nobody could tell a new
+# break from the existing noise. It exits 0 now, which is only worth keeping
+# true if something enforces it.
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/web-checks.yml', 'vercel.json', 'scripts/**']
+  pull_request:
+    paths: ['web/**', '.github/workflows/web-checks.yml', 'vercel.json', 'scripts/**']
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The real .mp4s, not LFS pointers. verify:build asserts on this, and
+          # a pointer-only checkout would fail it for the wrong reason.
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: web
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+      - name: Verify build output
+        # Precache coverage, Range-request support, no media precached, and no
+        # Git LFS pointer files shipped in place of real media.
+        working-directory: web
+        run: npm run verify:build

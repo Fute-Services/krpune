@@ -8,7 +8,12 @@ export default defineConfig([
   // public/vendor holds third-party bundles (pannellum) that we ship verbatim.
   // Linting them produced 382 errors in minified code we do not own, which
   // drowned out anything real and made `npm run lint` useless.
-  globalIgnores(['dist', 'public/vendor']),
+  //
+  // test-results / playwright-report are the same problem from a different
+  // direction: a Playwright run writes minified page scripts into its trace
+  // artifacts, so `npm run lint` reported 316 errors in captured third-party
+  // JavaScript purely because tests had been run recently.
+  globalIgnores(['dist', 'public/vendor', 'test-results', 'playwright-report']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

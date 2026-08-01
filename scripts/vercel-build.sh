@@ -26,30 +26,15 @@ POINTER_PREFIX="version https://git-lfs.github.com"
 
 echo "──── Git LFS ────────────────────────────────────────────"
 
-if ! command -v git-lfs >/dev/null 2>&1; then
-  echo "git-lfs is not installed in this build image."
-  echo "Falling through to the pointer check below, which will fail with detail."
-elif [ ! -d .git ]; then
-  echo "No .git directory in the build context — nothing for git lfs to pull."
-  echo "Falling through to the pointer check below, which will fail with detail."
-else
-  git lfs install --local || true
-
-  # Vercel's clone has no credentials the LFS endpoint will take. Supply them
-  # from GITHUB_TOKEN when it is set; without it `git lfs pull` 401s.
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    git config --local \
-      "http.https://github.com/.extraheader" \
-      "Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
-    echo "Using GITHUB_TOKEN for LFS authentication."
-  else
-    echo "GITHUB_TOKEN is not set — attempting an unauthenticated pull."
-  fi
-
-  # Not fatal on its own: the pointer check below is the real gate, and it can
-  # explain the failure far better than git-lfs's exit code can.
-  git lfs pull || echo "git lfs pull failed — see the pointer check below."
-fi
+# Not `git lfs pull`. Vercel's Git integration hands the build a plain file
+# tree with no `.git` directory — the first attempt at this printed "Not in a
+# Git repository" three times and stopped the build — so the git-lfs client
+# has nothing to work with and no GITHUB_TOKEN can change that.
+#
+# The LFS batch API needs none of git's machinery: a pointer file carries the
+# oid and size, which is the entire request. Verified against this repo,
+# unauthenticated, returning bytes that sha256-match the originals.
+node scripts/fetch-lfs-videos.mjs
 
 echo "──── Verifying the videos are real files ────────────────"
 
@@ -72,16 +57,14 @@ BUILD STOPPED: Git LFS objects were not fetched, so the videos above are
 pointer files. Deploying this would serve three dead pages that look fine
 in every automated check.
 
-Fix one of these, then redeploy:
+scripts/fetch-lfs-videos.mjs should have replaced them. Check its output above:
 
-  1. Set GITHUB_TOKEN in the Vercel project settings (a PAT with repo read
-     access) so `git lfs pull` can authenticate, and confirm the build image
-     provides git-lfs.
-
-  2. Or take the fallback: host the three originals on Vercel Blob and add a
-     prebuild step that downloads them into web/public/media/videos/ before
-     the Vite build. That keeps the files same-origin and byte-identical, so
-     nothing about the service worker or the offline manifest changes.
+  - "no pointer files" means it saw real content and did nothing, so the
+    pointers arrived some other way.
+  - A 4xx from the batch API means the repo went private — set GITHUB_TOKEN
+    in the Vercel project settings (a PAT with repo read access); the script
+    sends it when present.
+  - A size mismatch means the download was truncated. Re-run the deploy.
 
 EOF
   exit 1

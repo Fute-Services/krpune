@@ -21,8 +21,9 @@ npm run preview # serve the production build locally
 Deployment is driven by `../vercel.json` at the repository root:
 
 - Install: `cd web && npm install`
-- Build: `bash scripts/vercel-build.sh` → pulls Git LFS, proves the videos are
-  real, then runs `npm run build` and `npm run verify:build`
+- Build: `bash scripts/vercel-build.sh` → restores the Git LFS videos over
+  HTTPS, proves they are real, then runs `npm run build` and
+  `npm run verify:build`
 - Output: `web/dist`
 - Rewrites: everything that is not a real asset path falls back to
   `/index.html`. The app uses hash routing so it never produces such a URL
@@ -44,9 +45,15 @@ the whole Playwright suite passed against real videos.
 
 Three defences now exist, deliberately at different layers:
 
-1. `scripts/vercel-build.sh` runs `git lfs pull` (authenticated with the
-   `GITHUB_TOKEN` project env var) and **fails the build** if any video is still
-   a pointer.
+1. `scripts/vercel-build.sh` runs `scripts/fetch-lfs-videos.mjs` and **fails
+   the build** if any video is still a pointer. That script deliberately does
+   not use the git-lfs client: Vercel hands the build a plain file tree with
+   no `.git`, so `git lfs pull` only prints "Not in a Git repository" — no
+   token can fix that. It reads the oid and size out of each pointer and calls
+   GitHub's LFS batch API over plain HTTPS instead. Unauthenticated, because
+   the repo is public; it sends `GITHUB_TOKEN` if one is set, for the day it
+   is not. Downloads are size-checked before they are written, and the bytes
+   were verified to sha256-match the originals.
 2. `npm run verify:build` refuses any `dist/` file that begins with
    `version https://git-lfs.github.com`.
 3. `offlineDownload.ts` rejects a response drastically smaller than the media

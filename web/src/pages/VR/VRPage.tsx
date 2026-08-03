@@ -8,11 +8,18 @@ import { loadManifest, resolveSource } from "@/components/Panorama/assets";
 import type { Marker, MarkerSpec } from "@/components/Panorama/FloorMarkers";
 import type { PanoramaScene } from "@/components/Panorama/types";
 import {
-    assignLabelRows,
+    placeLabels,
     spreadSignposts,
-    LABEL_ROW_HEIGHT,
+    type LabelSize,
     type SignpostPoint,
 } from "./signpostLayout";
+
+/**
+ * Where a name pill sits before the layout pass has measured anything: below
+ * its arrow, which is also the first place that pass tries. Roughly the arrow's
+ * half-height plus a gap plus the pill's own half-height.
+ */
+const LABEL_HOME_DY = 40;
 
 /** Wide by default — the tour should always open zoomed out. */
 const DEFAULT_FOV = 100;
@@ -110,7 +117,7 @@ export default function Vr() {
      * the whole point of writing transforms straight onto the nodes.
      */
     const signpostLabels = useRef(new Map<string, HTMLSpanElement>());
-    const labelWidths = useRef(new Map<string, number>());
+    const labelSizes = useRef(new Map<string, LabelSize>());
 
     // Read inside engine callbacks, which are registered once.
     const scenesRef = useRef(scenes);
@@ -334,8 +341,8 @@ export default function Vr() {
     useEffect(() => {
         if (!engine || !ready) return;
 
-        /** Last row written per pill, so an unchanged one is not rewritten. */
-        const rows = new Map<string, number>();
+        /** Last offset written per pill, so an unchanged one is not rewritten. */
+        const offsets = new Map<string, string>();
 
         const place = () => {
             const nodes = new Map<string, HTMLButtonElement>();
@@ -355,17 +362,17 @@ export default function Vr() {
 
             // Arrows first, then the pills against where the arrows ended up.
             const spread = spreadSignposts(projected);
-            const labelRows = assignLabelRows(spread, (id) => {
-                const cached = labelWidths.current.get(id);
-                if (cached !== undefined) return cached;
+            const labelOffsets = placeLabels(spread, (id) => {
+                const cached = labelSizes.current.get(id);
+                if (cached) return cached;
                 const label = signpostLabels.current.get(id);
                 if (!label) return undefined;
-                // Once per scene: offsetWidth forces a layout, and doing that
-                // per pill per frame would undo the point of writing transforms
-                // straight onto the nodes.
-                const width = label.offsetWidth;
-                labelWidths.current.set(id, width);
-                return width;
+                // Once per scene: reading offsetWidth forces a layout, and doing
+                // that per pill per frame would undo the point of writing
+                // transforms straight onto the nodes.
+                const size = { width: label.offsetWidth, height: label.offsetHeight };
+                labelSizes.current.set(id, size);
+                return size;
             });
 
             for (const spot of spread) {
@@ -376,16 +383,18 @@ export default function Vr() {
                 node.style.transform = `translate3d(${spot.x}px, ${spot.y}px, 0) translate(-50%, -50%)`;
                 node.style.visibility = "visible";
 
-                const row = labelRows.get(spot.id) ?? 0;
+                const offset = labelOffsets.get(spot.id);
+                if (!offset) continue;
+                // The pill is anchored on the arrow's centre, so the -50% is what
+                // centres it and the offset is where the layout pass put it.
+                const transform = `translate(calc(-50% + ${Math.round(offset.dx)}px), calc(-50% + ${Math.round(offset.dy)}px))`;
                 // Only on a change. The arrow's own transform has to be rewritten
-                // every frame because the camera moves, but a row is stable for
-                // seconds at a time, and this runs inside the render loop.
-                if (rows.get(spot.id) === row) continue;
-                rows.set(spot.id, row);
+                // every frame because the camera moves, but a pill keeps its side
+                // of the arrow for seconds at a time, and this is the render loop.
+                if (offsets.get(spot.id) === transform) continue;
+                offsets.set(spot.id, transform);
                 const label = signpostLabels.current.get(spot.id);
-                // Replaces Tailwind's -translate-x-1/2, which is why the -50% is
-                // written back out here.
-                if (label) label.style.transform = `translate(-50%, ${row * LABEL_ROW_HEIGHT}px)`;
+                if (label) label.style.transform = transform;
             }
 
             // A node React has mounted but the engine does not know about yet
@@ -398,7 +407,7 @@ export default function Vr() {
 
         // Pill widths belong to this set of signposts; a scene change brings new
         // names and new widths.
-        labelWidths.current.clear();
+        labelSizes.current.clear();
 
         place();
         engine.onFrame = place;
@@ -502,19 +511,27 @@ export default function Vr() {
                                     style={{ transform: `rotate(${s.rotation}deg)` }}
                                 />
                             </span>
-                            {/* The name is a hover reveal: twelve arrows each
-                                shouting their destination buried the panorama.
-                                Absolutely positioned so appearing costs the
-                                arrow no layout shift. */}
+                            {/* The name is a hover reveal on a device that can
+                                hover: twelve arrows each shouting their
+                                destination buried the panorama. Absolutely
+                                positioned so appearing costs the arrow no
+                                layout shift.
+
+                                Anchored on the arrow's centre rather than under
+                                its box, because the layout pass decides which
+                                side of the arrow it goes on — the inline
+                                transform below is the same shape that pass
+                                writes, so the first frame is already right. */}
                             <span
                                 ref={(el) => {
                                     if (el) signpostLabels.current.set(s.id, el);
                                     else {
                                         signpostLabels.current.delete(s.id);
-                                        labelWidths.current.delete(s.id);
+                                        labelSizes.current.delete(s.id);
                                     }
                                 }}
-                                className={`pointer-events-none absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm transition-opacity duration-150 md:text-[11px] ${
+                                style={{ transform: `translate(-50%, calc(-50% + ${LABEL_HOME_DY}px))` }}
+                                className={`pointer-events-none absolute left-1/2 top-1/2 whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm transition-opacity duration-150 md:text-[11px] ${
                                     named
                                         ? "opacity-100"
                                         : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"

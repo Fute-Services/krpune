@@ -20,7 +20,11 @@ export interface SignpostPoint {
 }
 
 /** Centre-to-centre distance below which two arrows read as a single blob. */
-export const ARROW_MIN_GAP = 58;
+export const ARROW_MIN_GAP = 78;
+/** The arrow artwork, at the size the tablet draws it. */
+export const ARROW_SIZE = 44;
+/** Clearance between an arrow's edge and the name pill beside it. */
+export const LABEL_GAP = 8;
 /**
  * How far an arrow may be pushed off its true projected point.
  *
@@ -29,19 +33,13 @@ export const ARROW_MIN_GAP = 58;
  * A tap walks by destination id rather than by position, so a nudge this size
  * costs nothing and keeps the arrows distinguishable.
  *
- * 36 rather than 30 because of what three coincident arrows need: they can only
- * separate onto a circle of this radius, and an equilateral triangle inscribed
- * in it has sides of r * sqrt(3). At 30 that is 52 px and the full gap is
- * unreachable; at 36 it is 62. Beyond three the clamp wins and the guarantee
- * weakens to "no two arrows visually overlap", which is what the tests assert.
+ * Sized against what three coincident arrows need: they can only separate onto
+ * a circle of this radius, and an equilateral triangle inscribed in it has
+ * sides of r * sqrt(3), so reaching a 78 px gap needs 45. Beyond three the
+ * clamp wins and the guarantee weakens to "no two arrows overlap", which is
+ * what the tests assert.
  */
-export const ARROW_MAX_NUDGE = 36;
-/** Vertical step between stacked name pills — pill height plus breathing room. */
-export const LABEL_ROW_HEIGHT = 26;
-/** Horizontal clearance between two pills before they count as colliding. */
-export const LABEL_GAP_X = 10;
-/** Past this many rows the stack itself becomes the clutter. */
-export const LABEL_MAX_ROWS = 3;
+export const ARROW_MAX_NUDGE = 48;
 
 /**
  * Group points that are too close, including transitively: A near B and B near
@@ -143,49 +141,126 @@ export function spreadSignposts(
   });
 }
 
+export interface LabelSize {
+  width: number;
+  height: number;
+}
+
+/** Offset of a name pill's centre from its arrow's centre, in pixels. */
+export interface LabelOffset {
+  dx: number;
+  dy: number;
+}
+
+interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
 /**
- * Drop a name pill to the next row when it would overprint another.
+ * The eight places a pill can sit around its arrow, clockwise from below.
  *
- * Two pills collide when their horizontal spans overlap and they sit on roughly
- * the same line. Order is by y, then x, then id — the last one only so that the
- * result depends on nothing that can change between two frames at the same
- * geometry, which is what would make a pill flicker between rows.
- *
- * `widthOf` returns a pill's measured width. On the first frame after a scene
- * change nothing has been measured yet; an unknown width counts as a point
- * rather than as a box, so a pill that has not been measured can be pushed down
- * a row but can never push a measured one down on the strength of a guess.
+ * Screen coordinates, so +y is down and 90 degrees is directly beneath the
+ * arrow — where a single uncrowded name belongs and where it stays, because
+ * that candidate is tried first.
  */
-export function assignLabelRows(
+const PLACEMENTS = [90, 45, 135, 0, 180, -45, -135, -90].map((degrees) => ({
+  degrees,
+  radians: (degrees * Math.PI) / 180,
+}));
+
+const angleBetween = (a: number, b: number) => {
+  const difference = Math.abs(((a - b + 540) % 360) - 180);
+  return difference;
+};
+
+/**
+ * Put every name pill beside its own arrow, out of the way of the others.
+ *
+ * Stacking the pills into rows under the cluster was the first attempt, and it
+ * traded one problem for two: a pill sat across the arrow next to it, and with
+ * three names in a column under four arrows there was no way to tell which name
+ * belonged to which. So each pill is now placed against its own arrow and the
+ * eight positions around it are tried in turn — beneath first, so an uncrowded
+ * signpost looks exactly as it did, then outwards, away from the middle of the
+ * cluster, so a crowded group fans its names out rather than inwards.
+ *
+ * A candidate is rejected if it covers any arrow — including arrows other than
+ * its own, which is the case in the screenshots — or a pill already placed. If
+ * every candidate is rejected the outward one is used anyway: a name in a
+ * slightly awkward spot beats a name that vanished.
+ *
+ * `sizeOf` returns a pill's measured box. Nothing is measured on the first
+ * frame after a scene change; an unmeasured pill is treated as a point, so it
+ * can be moved out of another's way but can never push a measured one aside on
+ * the strength of a guess.
+ */
+export function placeLabels(
   points: readonly SignpostPoint[],
-  widthOf: (id: string) => number | undefined,
-  { rowHeight = LABEL_ROW_HEIGHT, gapX = LABEL_GAP_X, maxRows = LABEL_MAX_ROWS } = {},
-): Map<string, number> {
+  sizeOf: (id: string) => LabelSize | undefined,
+  { arrowSize = ARROW_SIZE, gap = LABEL_GAP } = {},
+): Map<string, LabelOffset> {
+  const placed = new Map<string, LabelOffset>();
+  if (points.length === 0) return placed;
+
+  const arrowHalf = arrowSize / 2;
+  const arrowBoxes = points.map((point) => ({
+    left: point.x - arrowHalf,
+    right: point.x + arrowHalf,
+    top: point.y - arrowHalf,
+    bottom: point.y + arrowHalf,
+  }));
+
+  const centreX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const centreY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+
+  // Ties broken by id so the result depends on nothing that can differ between
+  // two frames showing the same thing.
   const ordered = [...points].sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
-  const taken: { left: number; right: number; y: number }[] = [];
-  const assigned = new Map<string, number>();
+  const taken: Box[] = [];
 
   for (const point of ordered) {
-    const width = widthOf(point.id) ?? 0;
-    const left = point.x - width / 2 - gapX;
-    const right = point.x + width / 2 + gapX;
+    const size = sizeOf(point.id) ?? { width: 0, height: 0 };
 
-    let row = 0;
-    // `maxRows` counts rows, so the last usable index is one below it. Off by
-    // one here and six crowded pills stacked four deep instead of three.
-    while (row < maxRows - 1) {
-      const y = point.y + row * rowHeight;
-      const clash = taken.some(
-        (other) =>
-          left < other.right && right > other.left && Math.abs(y - other.y) < rowHeight,
-      );
-      if (!clash) break;
-      row += 1;
+    const outward =
+      Math.hypot(point.x - centreX, point.y - centreY) < 0.01
+        ? 90 // dead centre of its own group: no way out, so keep it beneath.
+        : (Math.atan2(point.y - centreY, point.x - centreX) * 180) / Math.PI;
+
+    const candidates = [...PLACEMENTS].sort((a, b) => {
+      // Beneath always leads; the rest follow the way out of the cluster.
+      if (a.degrees === 90) return -1;
+      if (b.degrees === 90) return 1;
+      return angleBetween(a.degrees, outward) - angleBetween(b.degrees, outward);
+    });
+
+    let chosen: LabelOffset | null = null;
+    let fallback: LabelOffset | null = null;
+
+    for (const candidate of candidates) {
+      const dx = Math.cos(candidate.radians) * (arrowHalf + gap + size.width / 2);
+      const dy = Math.sin(candidate.radians) * (arrowHalf + gap + size.height / 2);
+      const box: Box = {
+        left: point.x + dx - size.width / 2,
+        right: point.x + dx + size.width / 2,
+        top: point.y + dy - size.height / 2,
+        bottom: point.y + dy + size.height / 2,
+      };
+      fallback ??= { dx, dy };
+      if (arrowBoxes.some((arrow) => overlaps(box, arrow))) continue;
+      if (taken.some((other) => overlaps(box, other))) continue;
+      taken.push(box);
+      chosen = { dx, dy };
+      break;
     }
 
-    taken.push({ left, right, y: point.y + row * rowHeight });
-    assigned.set(point.id, row);
+    placed.set(point.id, chosen ?? fallback!);
   }
 
-  return assigned;
+  return placed;
 }

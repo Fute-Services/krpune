@@ -349,9 +349,13 @@ test.describe('VR signposts', () => {
               const pill = [...button.querySelectorAll<HTMLElement>('span')].find((span) =>
                 span.textContent?.trim(),
               );
-              const box = button.getBoundingClientRect();
+              // The artwork, not the button: the button's padding box stops
+              // exactly where the pill beneath it starts, which would report
+              // every correctly-placed name as touching its own arrow.
+              const box = (button.querySelector('img') ?? button).getBoundingClientRect();
               return {
                 name: pill?.textContent?.trim() ?? '?',
+                arrow: box,
                 centre: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
                 // Only a pill that is actually painted can collide with another.
                 pill:
@@ -385,6 +389,19 @@ test.describe('VR signposts', () => {
               }
             }
           }
+
+          // A name laid across an arrow — any arrow, including the one it
+          // belongs to. This is what the stacked-rows version did: the pill hung
+          // off its own arrow and landed on the next one, so nothing on screen
+          // said which name went with which destination.
+          for (const spot of spots) {
+            if (!spot.pill) continue;
+            for (const other of spots) {
+              if (overlap(spot.pill, other.arrow)) {
+                collisions.push(`"${spot.name}" covers the "${other.name}" arrow`);
+              }
+            }
+          }
           return {
             count: spots.length,
             collisions,
@@ -404,13 +421,14 @@ test.describe('VR signposts', () => {
         ).toEqual([]);
         if (count > 1) {
           sawMultiple = true;
-          expect(collisions, `name pills overlapping: ${collisions.join('; ')}`).toEqual([]);
+          expect(collisions, `signposts overlapping: ${collisions.join('; ')}`).toEqual([]);
           // Pushed apart in screen space, then clamped back towards the real
-          // point — so this is the clamp's floor, not the target gap.
+          // point — so this is the arrow's own width, the point at which two of
+          // them stop touching, not the target gap.
           expect(
             Math.round(closest),
             'two arrows are drawn on top of each other',
-          ).toBeGreaterThanOrEqual(36);
+          ).toBeGreaterThanOrEqual(44);
         }
         await touchPage.waitForTimeout(1000);
       }

@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import {
-  assignLabelRows,
+  placeLabels,
   spreadSignposts,
   ARROW_MAX_NUDGE,
   ARROW_MIN_GAP,
-  LABEL_GAP_X,
-  LABEL_MAX_ROWS,
-  LABEL_ROW_HEIGHT,
+  ARROW_SIZE,
+  LABEL_GAP,
+  type LabelSize,
   type SignpostPoint,
 } from '../src/pages/VR/signpostLayout';
 
@@ -34,10 +34,35 @@ const closestPair = (points: SignpostPoint[]) => {
 
 const byId = (points: SignpostPoint[]) => new Map(points.map((p) => [p.id, p]));
 
-test.describe('signpost layout', () => {
-  /** The arrow artwork is 44 px at the size the tablet renders it. */
-  const ARROW_SIZE = 44;
+interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
 
+const overlaps = (a: Box, b: Box) =>
+  a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+const arrowBox = (point: SignpostPoint): Box => ({
+  left: point.x - ARROW_SIZE / 2,
+  right: point.x + ARROW_SIZE / 2,
+  top: point.y - ARROW_SIZE / 2,
+  bottom: point.y + ARROW_SIZE / 2,
+});
+
+/** Where a pill actually lands, given the offset the layout pass chose. */
+const pillBox = (point: SignpostPoint, size: LabelSize, offset: { dx: number; dy: number }): Box => ({
+  left: point.x + offset.dx - size.width / 2,
+  right: point.x + offset.dx + size.width / 2,
+  top: point.y + offset.dy - size.height / 2,
+  bottom: point.y + offset.dy + size.height / 2,
+});
+
+const PILL_HEIGHT = 22;
+const pill = (width: number): LabelSize => ({ width, height: PILL_HEIGHT });
+
+test.describe('signpost layout', () => {
   test('two arrows on the same point separate by the full gap', () => {
     const crowded: SignpostPoint[] = [
       { id: 'liftlobby', x: 600, y: 400 },
@@ -52,9 +77,7 @@ test.describe('signpost layout', () => {
 
   test('three arrows on the same point stop overlapping', () => {
     // Looking down a corridor at three destinations: metres apart on the floor,
-    // a few pixels apart on screen. Three cannot all reach the full gap — that
-    // would need a circle wider than the nudge clamp allows — so the claim here
-    // is the one that matters on screen: no two of them overlap.
+    // a few pixels apart on screen.
     const crowded: SignpostPoint[] = [
       { id: 'liftlobby', x: 600, y: 400 },
       { id: 'podium2', x: 604, y: 403 },
@@ -96,9 +119,6 @@ test.describe('signpost layout', () => {
   });
 
   test('a row of arrows down a corridor is never made worse', () => {
-    // Three in a line, each just inside the gap — the shape a corridor of
-    // destinations projects to. Rearranging them must not bring any pair closer
-    // together than they already were.
     const line: SignpostPoint[] = [
       { id: 'near', x: 400, y: 500 },
       { id: 'middle', x: 450, y: 500 },
@@ -106,9 +126,7 @@ test.describe('signpost layout', () => {
     ];
 
     const spread = spreadSignposts(line);
-    expect(Math.round(closestPair(spread))).toBeGreaterThanOrEqual(
-      Math.round(closestPair(line)),
-    );
+    expect(Math.round(closestPair(spread))).toBeGreaterThanOrEqual(Math.round(closestPair(line)));
   });
 
   test('four arrows in a heap all clear each other', () => {
@@ -129,66 +147,136 @@ test.describe('signpost layout', () => {
     expect(spreadSignposts(single)).toEqual(single);
   });
 
-  test('name pills that would overprint drop to their own rows', () => {
-    // The Terrace Amenities case from the screenshots: three pills, all wide,
-    // all landing on the same line.
-    const points: SignpostPoint[] = [
-      { id: 'terrace2', x: 860, y: 640 },
-      { id: 'terrace', x: 900, y: 645 },
-      { id: 'podium1', x: 880, y: 660 },
+  test('a lone name sits directly beneath its arrow', () => {
+    const single: SignpostPoint[] = [{ id: 'dropoff', x: 800, y: 400 }];
+    const offset = placeLabels(single, () => pill(120)).get('dropoff')!;
+
+    expect(offset.dx, 'an uncrowded name should not be pushed sideways').toBeCloseTo(0, 6);
+    expect(offset.dy).toBeCloseTo(ARROW_SIZE / 2 + LABEL_GAP + PILL_HEIGHT / 2, 5);
+  });
+
+  /**
+   * The failure in the screenshot: "TERRACE FOOD COURT" was laid across the
+   * arrow next to it, and three names stacked in a column under four arrows
+   * left no way to tell which name belonged to which.
+   */
+  test('no name is laid across any arrow, its own or anyone else’s', () => {
+    const crowded: SignpostPoint[] = [
+      { id: 'terrace2', x: 900, y: 420 },
+      { id: 'terrace', x: 960, y: 460 },
+      { id: 'podium1', x: 905, y: 500 },
     ];
-    const widths = new Map([
-      ['terrace2', 210], // TERRACE FOOD COURT
-      ['terrace', 200], // MULTIPURPOSE COURT
-      ['podium1', 90], // PODIUM
+    const sizes = new Map<string, LabelSize>([
+      ['terrace2', pill(210)], // TERRACE FOOD COURT
+      ['terrace', pill(200)], // MULTIPURPOSE COURT
+      ['podium1', pill(90)], // PODIUM
     ]);
 
-    const rows = assignLabelRows(points, (id) => widths.get(id));
-    expect(new Set(rows.values()).size, `all three pills share a row: ${[...rows]}`).toBe(3);
+    const spread = spreadSignposts(crowded);
+    const offsets = placeLabels(spread, (id) => sizes.get(id));
 
-    // And the rows they were given genuinely clear each other.
-    for (const a of points) {
-      for (const b of points) {
-        if (a.id >= b.id) continue;
-        const sameRow = rows.get(a.id) === rows.get(b.id);
-        const overlapX =
-          Math.abs(a.x - b.x) < (widths.get(a.id)! + widths.get(b.id)!) / 2 + LABEL_GAP_X;
-        expect(sameRow && overlapX, `${a.id} and ${b.id} still overprint`).toBe(false);
+    for (const point of spread) {
+      const box = pillBox(point, sizes.get(point.id)!, offsets.get(point.id)!);
+      for (const other of spread) {
+        expect(
+          overlaps(box, arrowBox(other)),
+          `"${point.id}" name covers the "${other.id}" arrow`,
+        ).toBe(false);
       }
     }
   });
 
-  test('pills far apart all stay on the first row', () => {
-    const points: SignpostPoint[] = [
-      { id: 'left', x: 100, y: 400 },
-      { id: 'right', x: 900, y: 400 },
+  test('names never overprint each other', () => {
+    const crowded: SignpostPoint[] = [
+      { id: 'terrace2', x: 900, y: 420 },
+      { id: 'terrace', x: 960, y: 460 },
+      { id: 'podium1', x: 905, y: 500 },
+      { id: 'liftlobby', x: 860, y: 455 },
     ];
-    const rows = assignLabelRows(points, () => 120);
-    expect([...rows.values()]).toEqual([0, 0]);
-  });
+    const sizes = new Map<string, LabelSize>([
+      ['terrace2', pill(210)],
+      ['terrace', pill(200)],
+      ['podium1', pill(90)],
+      ['liftlobby', pill(120)],
+    ]);
 
-  test('the stack is capped rather than running off the screen', () => {
-    // Six identical pills at one point cannot all have a row of their own.
-    const points: SignpostPoint[] = Array.from({ length: 6 }, (_, i) => ({
-      id: `spot-${i}`,
-      x: 500,
-      y: 300,
+    const spread = spreadSignposts(crowded);
+    const offsets = placeLabels(spread, (id) => sizes.get(id));
+    const boxes = spread.map((point) => ({
+      id: point.id,
+      box: pillBox(point, sizes.get(point.id)!, offsets.get(point.id)!),
     }));
-    const rows = assignLabelRows(points, () => 180);
-    expect(Math.max(...rows.values())).toBeLessThan(LABEL_MAX_ROWS);
-    expect(LABEL_MAX_ROWS * LABEL_ROW_HEIGHT).toBeLessThan(120);
+
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        expect(
+          overlaps(boxes[i].box, boxes[j].box),
+          `"${boxes[i].id}" and "${boxes[j].id}" overprint`,
+        ).toBe(false);
+      }
+    }
   });
 
-  test('a pill of unknown width never displaces a measured one', () => {
-    const points: SignpostPoint[] = [
-      { id: 'measured', x: 500, y: 300 },
-      { id: 'unmeasured', x: 505, y: 302 },
+  test('every name stays touching its own arrow', () => {
+    // What makes a name readable as *that* arrow's name: it never drifts off to
+    // float between them.
+    const crowded: SignpostPoint[] = [
+      { id: 'a', x: 700, y: 400 },
+      { id: 'b', x: 760, y: 430 },
+      { id: 'c', x: 690, y: 470 },
     ];
-    // Width is unknown for the first frame after a scene change. Whatever the
-    // guess costs, it must cost the pill that is guessing — the measured one
-    // stays where it was going to be.
-    const rows = assignLabelRows(points, (id) => (id === 'measured' ? 160 : undefined));
-    expect(rows.get('measured')).toBe(0);
-    expect(rows.get('unmeasured')).toBe(1);
+    const offsets = placeLabels(spreadSignposts(crowded), () => pill(160));
+
+    for (const [id, offset] of offsets) {
+      const reach = Math.hypot(offset.dx, offset.dy);
+      // Half the arrow, the gap, and at most half the pill in each direction.
+      expect(reach, `"${id}" floated away from its arrow`).toBeLessThanOrEqual(
+        ARROW_SIZE / 2 + LABEL_GAP + 160 / 2 + 1,
+      );
+    }
+  });
+
+  test('placement is deterministic', () => {
+    const crowded: SignpostPoint[] = [
+      { id: 'a', x: 500, y: 300 },
+      { id: 'b', x: 540, y: 320 },
+      { id: 'c', x: 505, y: 355 },
+    ];
+    const spread = spreadSignposts(crowded);
+    // Same geometry, same answer — anything else is a pill hopping around the
+    // arrow between frames.
+    expect([...placeLabels(spread, () => pill(140))]).toEqual([
+      ...placeLabels(spread, () => pill(140)),
+    ]);
+  });
+
+  test('a pill of unknown size is placed without displacing a measured one', () => {
+    // Far enough apart that neither arrow is in the other's way, so the only
+    // thing that could move the measured pill is the unmeasured one's guess.
+    const points: SignpostPoint[] = [
+      { id: 'measured', x: 300, y: 300 },
+      { id: 'unmeasured', x: 900, y: 300 },
+    ];
+    // Sizes are unknown for the first frame after a scene change. Whatever the
+    // guess costs, it must cost the pill that is guessing.
+    const offsets = placeLabels(points, (id) => (id === 'measured' ? pill(160) : undefined));
+    expect(offsets.get('measured')!.dx).toBeCloseTo(0, 6);
+    expect(offsets.get('measured')!.dy).toBeGreaterThan(0);
+    expect(offsets.has('unmeasured')).toBe(true);
+  });
+
+  test('a name is moved aside by an arrow that is not its own', () => {
+    // The exact failure in the screenshot: "TERRACE FOOD COURT" hung off its own
+    // arrow and landed across the one beside it. Its own arrow is clear either
+    // way, so nothing but the neighbour can push it off "beneath".
+    const points: SignpostPoint[] = [
+      { id: 'wide', x: 500, y: 300 },
+      { id: 'neighbour', x: 560, y: 341 },
+    ];
+    const offsets = placeLabels(points, (id) => (id === 'wide' ? pill(200) : pill(60)));
+    expect(
+      Math.abs(offsets.get('wide')!.dx),
+      'the wide name stayed beneath, straight over the next arrow',
+    ).toBeGreaterThan(0);
   });
 });

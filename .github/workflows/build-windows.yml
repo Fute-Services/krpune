@@ -8,6 +8,15 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # A web-only commit cannot change this installer, and rebuilding a ~1 GB
+    # Electron app for one is five wasted minutes on every push.
+    #
+    # paths-ignore rather than paths: a commit is skipped only when *every* file
+    # in it is under web/, so anything touching desktop/, the workflow, the root
+    # or a release tag still builds. Trigger a build by hand from the Actions tab
+    # (Run workflow) if one is ever needed for a web-only change.
+    paths-ignore:
+      - 'web/**'
   workflow_dispatch:
 
 permissions:

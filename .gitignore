@@ -18,6 +18,14 @@ dist.zip
 build/
 out/
 
+# desktop/build is not build output: it is where electron-builder looks for the
+# packaging resources, and icon.ico lives there. `build/` above was swallowing
+# it, so CI checked out a tree without the icon and every Windows build died on
+# "cannot find specified resource build/icon.ico". The directory has to be
+# re-included before a file inside it can be.
+!desktop/build/
+!desktop/build/**
+
 # Electron build output — large binaries, never commit
 release/
 *.exe

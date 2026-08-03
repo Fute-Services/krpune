@@ -19,8 +19,11 @@ dist-ssr
 
 dist.zip
 dist/
-build/
 node_modules/
+
+# NOT build/ — despite the name it holds no build output. It is where
+# electron-builder looks for packaging resources, and the only thing in it is
+# icon.ico, which the installer cannot be built without.
 
 # Electron build output (electron-builder) — large binaries, never commit
 release/

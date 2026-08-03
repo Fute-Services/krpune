@@ -1,4 +1,4 @@
-﻿name: Build Windows App
+name: Build Windows App
 
 # Builds the Electron app into a Windows installer (.exe) and publishes it as a
 # downloadable artifact + a "latest" GitHub Release on every push to main.
@@ -41,7 +41,7 @@ jobs:
         # secrets are set, electron-builder picks them up automatically via the
         # CSC_LINK / CSC_KEY_PASSWORD env vars and signs the installer + exe.
         # If the secrets are empty, the build stays unsigned (as before) and
-        # still succeeds â€” so nothing breaks until the certificate is added.
+        # still succeeds — so nothing breaks until the certificate is added.
         working-directory: desktop
         run: npm run app:dist
         env:
@@ -80,13 +80,13 @@ jobs:
           # Put a big clickable download link right in the release description so
           # there's no need to expand the "Assets" section to find the installer.
           body: |
-            ## â¬‡ï¸ Download the Windows app
+            ## ⬇️ Download the Windows app
 
-            ### ðŸ‘‰ [**Click here to download KRC Pune (Windows installer, ~1 GB)**](https://github.com/${{ github.repository }}/releases/download/latest/KRC.Pune.Setup.0.0.0.exe)
+            ### 👉 [**Click here to download KRC Pune (Windows installer, ~1 GB)**](https://github.com/${{ github.repository }}/releases/download/latest/KRC.Pune.Setup.0.0.0.exe)
 
             After it downloads, double-click the `.exe` to install.
 
-            You can share this same link with anyone â€” it always points to the latest build.
+            You can share this same link with anyone — it always points to the latest build.
 
       - name: Show download link in the build summary
         # After every build this prints a clickable download link on the
@@ -98,11 +98,11 @@ jobs:
           NAME=$(basename "$EXE" | sed 's/ /./g')
           URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}"
           {
-            echo "## âœ… Windows build ready"
+            echo "## ✅ Windows build ready"
             echo ""
             echo "**Download the installer:**"
             echo ""
-            echo "ðŸ‘‰ [$NAME]($URL)"
+            echo "👉 [$NAME]($URL)"
             echo ""
             echo "Release page: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           } >> "$GITHUB_STEP_SUMMARY"

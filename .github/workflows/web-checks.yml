@@ -9,9 +9,9 @@ name: Web checks
 on:
   push:
     branches: [main]
-    paths: ['web/**', '.github/workflows/web-checks.yml', 'vercel.json', 'scripts/**']
+    paths: ['web/**', '.github/workflows/**', 'vercel.json', 'scripts/**']
   pull_request:
-    paths: ['web/**', '.github/workflows/web-checks.yml', 'vercel.json', 'scripts/**']
+    paths: ['web/**', '.github/workflows/**', 'vercel.json', 'scripts/**']
   workflow_dispatch:
 
 jobs:
@@ -25,6 +25,13 @@ jobs:
           # The real .mp4s, not LFS pointers. verify:build asserts on this, and
           # a pointer-only checkout would fail it for the wrong reason.
           lfs: true
+
+      - name: Check file encodings
+        # A CP-1252 round-trip left a U+008F control character in
+        # build-windows.yml, which made GitHub reject the workflow outright —
+        # 44 pushes produced a 0-second run with no jobs and no readable error.
+        # Needs no dependencies, so it runs before the install.
+        run: node scripts/check-encoding.mjs
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -1,4 +1,4 @@
-﻿// router.tsx
+// router.tsx
 import {
   createHashRouter,
   //  Navigate

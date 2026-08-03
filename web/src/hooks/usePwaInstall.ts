@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import {
+  getInstallPromptState,
+  promptInstall,
+  subscribeInstallPrompt,
+} from '@/offline/installPromptStore';
 
 /**
  * Install affordances, split honestly by platform.
@@ -9,12 +14,13 @@ import { useCallback, useEffect, useState } from 'react';
  * sits *below* the app-icon row in the share sheet, so users scroll past it.
  * We therefore expose `canPrompt` (a real button) and `isIos` (a hint) as two
  * different things, and never render a button that cannot work.
+ *
+ * The `beforeinstallprompt` event itself is not owned here. It fires once, on
+ * Chrome's schedule, usually before this hook's first consumer has mounted —
+ * installPromptStore listens from page load and parks it, and this hook just
+ * subscribes. Attaching the listener in an effect here is what made the real
+ * install button so rarely appear.
  */
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
 
 export function detectIos(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -39,38 +45,31 @@ export function usePwaInstall(): {
   isStandalone: boolean;
   promptInstall: () => Promise<'accepted' | 'dismissed' | 'unavailable'>;
 } {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isStandalone, setIsStandalone] = useState(detectStandalone);
+  const { deferred, installed } = useSyncExternalStore(
+    subscribeInstallPrompt,
+    getInstallPromptState,
+    getInstallPromptState,
+  );
 
+  const [displayStandalone, setDisplayStandalone] = useState(detectStandalone);
+
+  // A desktop Chromium window can switch to standalone without a reload, and a
+  // visitor who installs from the browser menu never touches our button — so
+  // the card has to notice on its own rather than sitting there for good.
   useEffect(() => {
-    const onBeforeInstall = (event: Event) => {
-      event.preventDefault();
-      setDeferred(event as BeforeInstallPromptEvent);
-    };
-    const onInstalled = () => {
-      setDeferred(null);
-      setIsStandalone(true);
-    };
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
+    const query = window.matchMedia?.('(display-mode: standalone)');
+    if (!query) return;
+    const onChange = () => setDisplayStandalone(detectStandalone());
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
   }, []);
-
-  const promptInstall = useCallback(async () => {
-    if (!deferred) return 'unavailable' as const;
-    await deferred.prompt();
-    const { outcome } = await deferred.userChoice;
-    setDeferred(null);
-    return outcome;
-  }, [deferred]);
 
   return {
     canPrompt: deferred !== null,
     isIos: detectIos(),
-    isStandalone,
+    // `installed` covers the window that stays a tab after installing, where
+    // the display-mode query never flips but there is nothing left to offer.
+    isStandalone: displayStandalone || installed,
     promptInstall,
   };
 }

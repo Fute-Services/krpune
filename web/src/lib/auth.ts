@@ -77,6 +77,12 @@ function parse(raw: string | null): Session | null {
     // reloading the page would otherwise resurrect it for another 20 minutes.
     if (isExpired(session)) {
       safeWrite(null);
+      // The other end of a session, and it used to leak: signOut() cleared the
+      // install dismissal, this branch did not. So a visitor who dismissed the
+      // card and walked away left the next person on that tablet with a session
+      // that had quietly aged out and an install offer that never appeared
+      // again — precisely what INSTALL_DISMISSED_KEY exists to prevent.
+      clearInstallDismissed();
       return null;
     }
     return session;
@@ -160,17 +166,22 @@ export async function signIn(email: string, password: string): Promise<Session> 
  */
 export const INSTALL_DISMISSED_KEY = 'krc.install.dismissed';
 
+/** Both ways a session can end have to clear this, or the comment above is a lie. */
+function clearInstallDismissed(): void {
+  try {
+    window.localStorage.removeItem(INSTALL_DISMISSED_KEY);
+  } catch {
+    /* storage unavailable — the flag could not have been written either */
+  }
+}
+
 export function signOut(): void {
   if (expiryTimer !== null) {
     window.clearTimeout(expiryTimer);
     expiryTimer = null;
   }
   safeWrite(null);
-  try {
-    window.localStorage.removeItem(INSTALL_DISMISSED_KEY);
-  } catch {
-    /* storage unavailable — the flag could not have been written either */
-  }
+  clearInstallDismissed();
   emit(null);
 }
 

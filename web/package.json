@@ -20,7 +20,8 @@
     "audit:videos": "node scripts/audit-videos.mjs",
     "verify:build": "node scripts/verify-build.mjs",
     "test:offline": "playwright test",
-    "panos:optimize": "node scripts/optimize-panoramas.mjs"
+    "panos:optimize": "node scripts/optimize-panoramas.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

@@ -173,6 +173,33 @@ for (const required of ['/manifest.webmanifest', '/icons/pwa-192.png', '/icons/p
   else fail(`${required} missing`);
 }
 
+// ─── 7b. …and opaque, at the size they claim ────────────────────────────────
+// iOS composites an apple-touch-icon's transparency onto black, and Android
+// masks a maskable icon into the launcher's shape — so a transparent icon
+// installs as a black tile or a clipped logo while looking perfectly fine in
+// every browser tab. Read straight from the PNG header (IHDR: width, height,
+// then bit depth and colour type at bytes 24/25) so this costs nothing:
+// colour type 0 and 2 are the two without an alpha channel.
+{
+  const expected = [
+    ['/icons/apple-touch-icon.png', 180],
+    ['/icons/pwa-192.png', 192],
+    ['/icons/pwa-512.png', 512],
+    ['/icons/pwa-512-maskable.png', 512],
+  ];
+  for (const [file, size] of expected) {
+    if (!distFiles.includes(file)) {
+      fail(`${file} missing`);
+      continue;
+    }
+    const png = readFileSync(join(dist, file.slice(1)));
+    const [width, height, colourType] = [png.readUInt32BE(16), png.readUInt32BE(20), png[25]];
+    if (width !== size || height !== size) fail(`${file} is ${width}x${height}, expected ${size}x${size}`);
+    else if (colourType !== 0 && colourType !== 2) fail(`${file} still has an alpha channel — run npm run icons:generate`);
+    else pass(`${file} is ${size}x${size} and opaque`);
+  }
+}
+
 // ─── 8. index.html must not use relative asset URLs (rule 5) ─────────────────
 {
   const html = readFileSync(join(dist, 'index.html'), 'utf8');

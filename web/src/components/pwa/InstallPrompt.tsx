@@ -46,13 +46,6 @@ export default function InstallPrompt() {
   const [visible, setVisible] = useState(false);
   const { pathname } = useLocation();
 
-  // On iOS the offline download does not start until the app is running from
-  // the Home Screen (see awaitingInstallProblem in offlineDownload.ts). So here
-  // this card is not an upsell — it is the only route to an offline app, and
-  // dismissing it would leave the device permanently online-only with nothing
-  // on screen to say why. Everywhere else × still means "not now".
-  const required = isIos && !isStandalone;
-
   // Home only. Signing in lands the visitor here, so the offer is still the
   // first thing they see — and an overlay that exists on exactly one screen
   // cannot sit on top of a control somewhere else. The first version of this
@@ -63,13 +56,13 @@ export default function InstallPrompt() {
   // Hold off briefly so the card animates in over a settled page rather than
   // competing with the route transition on first paint.
   useEffect(() => {
-    if (isStandalone || (dismissed && !required) || !onHome) {
+    if (isStandalone || dismissed || !onHome) {
       setVisible(false);
       return;
     }
     const timer = window.setTimeout(() => setVisible(true), 1500);
     return () => window.clearTimeout(timer);
-  }, [isStandalone, dismissed, onHome, required]);
+  }, [isStandalone, dismissed, onHome]);
 
   // Already running from the Home Screen — there is nothing left to install.
   if (isStandalone) return null;
@@ -95,16 +88,22 @@ export default function InstallPrompt() {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -40, opacity: 0 }}
           transition={{ duration: 0.35, ease: 'easeOut' }}
-          // Anchored to the top, not the bottom. The bottom of these pages is
-          // where the real controls live — the offline pill sits bottom-right,
-          // and AboutUs stacks Corporate Profile / Walkthrough / Gallery in the
-          // same corner. A bottom-anchored card sat on top of them and silently
-          // swallowed their taps, which read as "the brochure does not open".
-          // top-[5rem] also clears the update bar (top-0) and the floating Back
-          // button (top-6, ~2.5rem tall).
+          // Top right, which is where a browser's own install offer appears and
+          // where this one was asked to be.
+          //
+          // Never the bottom: that is where the real controls live — the offline
+          // pill sits bottom-right and AboutUs stacks Corporate Profile /
+          // Walkthrough / Gallery in the same corner. A bottom-anchored card sat
+          // on top of them and silently swallowed their taps, which read as "the
+          // brochure does not open".
+          //
+          // top-[5rem] clears the update bar (top-0), the floating Back button
+          // and the corner logo. The home page's own icon rail runs down this
+          // side underneath, which is why the × is on every platform now — see
+          // the dismiss button.
           className="
-            fixed top-[5rem] left-1/2 -translate-x-1/2 z-[1950]
-            w-[min(560px,calc(100vw-2.5rem))]
+            fixed top-[5rem] right-3 sm:right-5 z-[1950]
+            w-[min(420px,calc(100vw-1.5rem))]
             rounded-2xl overflow-hidden
             bg-[#062442]/95 backdrop-blur-xl border border-white/15
             shadow-[0_16px_48px_rgba(0,0,0,0.55)]
@@ -187,17 +186,24 @@ export default function InstallPrompt() {
               )}
             </div>
 
-            {/* No dismiss on iOS-in-Safari: there is nothing else on screen
-                that would tell the visitor why the app never went offline. */}
-            {!required && (
-              <button
-                onClick={close}
-                aria-label="Not now"
-                className="p-1 -m-1 shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-              >
-                <X size={18} />
-              </button>
-            )}
+            {/* On every platform, including iOS.
+
+                It used to be withheld there, because on iOS the download does
+                not start until the app runs from the Home Screen and this card
+                is the only thing that says so. But sitting in the top-right
+                corner it now covers the home page's icon rail, and a card that
+                cannot be closed would keep those buttons unreachable for as long
+                as the visitor declines to install. The explanation is not lost:
+                the offline pill reports 'awaiting-install' with the same reason,
+                and the dismissal only lasts for this visitor's session — the
+                next one on a shared tablet is offered it again. */}
+            <button
+              onClick={close}
+              aria-label="Not now"
+              className="p-1 -m-1 shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+            >
+              <X size={18} />
+            </button>
           </div>
         </motion.div>
       )}

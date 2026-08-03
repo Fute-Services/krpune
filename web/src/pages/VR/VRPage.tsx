@@ -7,6 +7,12 @@ import usePanoramaEngine from "@/components/Panorama/usePanoramaEngine";
 import { loadManifest, resolveSource } from "@/components/Panorama/assets";
 import type { Marker, MarkerSpec } from "@/components/Panorama/FloorMarkers";
 import type { PanoramaScene } from "@/components/Panorama/types";
+import {
+    assignLabelRows,
+    spreadSignposts,
+    LABEL_ROW_HEIGHT,
+    type SignpostPoint,
+} from "./signpostLayout";
 
 /** Wide by default — the tour should always open zoomed out. */
 const DEFAULT_FOV = 100;
@@ -95,6 +101,16 @@ export default function Vr() {
      * move them without going through React.
      */
     const signpostNodes = useRef(new Map<string, HTMLButtonElement>());
+
+    /**
+     * The name pills, and their measured widths.
+     *
+     * Width is read once per scene rather than per frame: `offsetWidth` forces a
+     * layout, and doing that for every pill inside the render loop would undo
+     * the whole point of writing transforms straight onto the nodes.
+     */
+    const signpostLabels = useRef(new Map<string, HTMLSpanElement>());
+    const labelWidths = useRef(new Map<string, number>());
 
     // Read inside engine callbacks, which are registered once.
     const scenesRef = useRef(scenes);
@@ -318,29 +334,71 @@ export default function Vr() {
     useEffect(() => {
         if (!engine || !ready) return;
 
+        /** Last row written per pill, so an unchanged one is not rewritten. */
+        const rows = new Map<string, number>();
+
         const place = () => {
-            const placed = new Set<string>();
+            const nodes = new Map<string, HTMLButtonElement>();
+            const projected: SignpostPoint[] = [];
+
             for (const marker of engine.navigationMarkers) {
                 const node = signpostNodes.current.get(marker.id);
                 if (!node) continue;
-                placed.add(marker.id);
                 const point = engine.projectMarker(marker);
                 if (!point.visible) {
                     node.style.visibility = "hidden";
                     continue;
                 }
+                nodes.set(marker.id, node);
+                projected.push({ id: marker.id, x: point.x, y: point.y });
+            }
+
+            // Arrows first, then the pills against where the arrows ended up.
+            const spread = spreadSignposts(projected);
+            const labelRows = assignLabelRows(spread, (id) => {
+                const cached = labelWidths.current.get(id);
+                if (cached !== undefined) return cached;
+                const label = signpostLabels.current.get(id);
+                if (!label) return undefined;
+                // Once per scene: offsetWidth forces a layout, and doing that
+                // per pill per frame would undo the point of writing transforms
+                // straight onto the nodes.
+                const width = label.offsetWidth;
+                labelWidths.current.set(id, width);
+                return width;
+            });
+
+            for (const spot of spread) {
+                const node = nodes.get(spot.id);
+                if (!node) continue;
                 // translate3d first, then centre on the point: the arrow is a
                 // fixed-size box, so the -50% cannot be folded into the pixels.
-                node.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -50%)`;
+                node.style.transform = `translate3d(${spot.x}px, ${spot.y}px, 0) translate(-50%, -50%)`;
                 node.style.visibility = "visible";
+
+                const row = labelRows.get(spot.id) ?? 0;
+                // Only on a change. The arrow's own transform has to be rewritten
+                // every frame because the camera moves, but a row is stable for
+                // seconds at a time, and this runs inside the render loop.
+                if (rows.get(spot.id) === row) continue;
+                rows.set(spot.id, row);
+                const label = signpostLabels.current.get(spot.id);
+                // Replaces Tailwind's -translate-x-1/2, which is why the -50% is
+                // written back out here.
+                if (label) label.style.transform = `translate(-50%, ${row * LABEL_ROW_HEIGHT}px)`;
             }
+
             // A node React has mounted but the engine does not know about yet
             // must stay hidden, or it would sit in the top-left corner for a
             // frame after a scene change.
             signpostNodes.current.forEach((node, id) => {
-                if (!placed.has(id)) node.style.visibility = "hidden";
+                if (!nodes.has(id)) node.style.visibility = "hidden";
             });
         };
+
+        // Pill widths belong to this set of signposts; a scene change brings new
+        // names and new widths.
+        labelWidths.current.clear();
 
         place();
         engine.onFrame = place;
@@ -449,6 +507,13 @@ export default function Vr() {
                                 Absolutely positioned so appearing costs the
                                 arrow no layout shift. */}
                             <span
+                                ref={(el) => {
+                                    if (el) signpostLabels.current.set(s.id, el);
+                                    else {
+                                        signpostLabels.current.delete(s.id);
+                                        labelWidths.current.delete(s.id);
+                                    }
+                                }}
                                 className={`pointer-events-none absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm transition-opacity duration-150 md:text-[11px] ${
                                     named
                                         ? "opacity-100"

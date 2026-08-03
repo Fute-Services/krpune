@@ -280,4 +280,147 @@ test.describe('VR signposts', () => {
       )
       .not.toBe(destination);
   });
+
+  /**
+   * Signposts must not pile up on each other.
+   *
+   * Hotspots metres apart on the floor project a few pixels apart when you are
+   * looking down a corridor at them. Every arrow in Drop Off, Podium 1 and the
+   * Sports Zone landed in one smudge, and the name pills overprinted into a
+   * single unreadable run — "PODIUM 1" over "CAFETERIA" rendering as
+   * "PODIUM 1FETERIA", "BACK TO COURT" sitting across "BACK TO START".
+   *
+   * Measured on a touch context because that is where every name is shown at
+   * once (nothing can hover, so nothing is held back) and the tour's actual
+   * device. Sampled repeatedly rather than once: the camera auto-rotates, so
+   * the arrangement is different every second and a single reading proves
+   * nothing about the arrangement two seconds later.
+   */
+  test('arrows and their names never overlap each other', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 1180, height: 820 },
+      hasTouch: true,
+    });
+    const touchPage = await context.newPage();
+
+    try {
+      await login(touchPage);
+      await touchPage.goto(url('/vr'));
+      await touchPage.waitForTimeout(9000);
+
+      // The opening scene has one hotspot, so it cannot collide with anything.
+      // Drop Off, one walk away, has three.
+      //
+      // Keep tapping until the tour is actually somewhere with more than one
+      // destination. A single tap is not enough to rely on: the arrow tracks a
+      // moving camera and can leave the screen between being found and being
+      // touched, and a run where the walk quietly did not happen sampled a
+      // one-arrow scene twenty times and reported that spacing was fine.
+      await expect
+        .poll(
+          async () => {
+            const mounted = await touchPage.locator(ALL_ARROWS).count();
+            if (mounted > 1) return mounted;
+            try {
+              await touchPage.locator(ARROWS).first().click({ force: true, timeout: 3_000 });
+            } catch {
+              /* nothing on screen this instant — the camera will bring one back */
+            }
+            await touchPage.waitForTimeout(2500);
+            return touchPage.locator(ALL_ARROWS).count();
+          },
+          {
+            message: 'never reached a scene with more than one destination',
+            timeout: LAP_MS,
+          },
+        )
+        .toBeGreaterThan(1);
+      // Let the walk settle before measuring anything.
+      await touchPage.waitForTimeout(3000);
+
+      const sample = () =>
+        touchPage.evaluate(() => {
+          const overlap = (a: DOMRect, b: DOMRect) =>
+            a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+          const spots = [...document.querySelectorAll<HTMLElement>('button[aria-label^="Walk to"]')]
+            .filter((button) => getComputedStyle(button).visibility !== 'hidden')
+            .map((button) => {
+              const pill = [...button.querySelectorAll<HTMLElement>('span')].find((span) =>
+                span.textContent?.trim(),
+              );
+              const box = button.getBoundingClientRect();
+              return {
+                name: pill?.textContent?.trim() ?? '?',
+                centre: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
+                // Only a pill that is actually painted can collide with another.
+                pill:
+                  pill && Number(getComputedStyle(pill).opacity) > 0.5
+                    ? pill.getBoundingClientRect()
+                    : null,
+                // Written by the layout pass, not by a class.
+                pillPositioned: Boolean(pill?.style.transform),
+              };
+            });
+
+          // Proof the layout pass is actually wired to these nodes. The
+          // geometry is asserted directly in signpost-layout.spec.ts; what this
+          // adds is that its answers reach the DOM — a detached ref or a
+          // renamed class would leave the pills where CSS put them and every
+          // spacing assertion below would pass by doing nothing.
+          const unpositioned = spots.filter((spot) => spot.pill && !spot.pillPositioned);
+
+          const collisions: string[] = [];
+          let closest = Infinity;
+          for (let i = 0; i < spots.length; i += 1) {
+            for (let j = i + 1; j < spots.length; j += 1) {
+              const a = spots[i];
+              const b = spots[j];
+              closest = Math.min(
+                closest,
+                Math.hypot(a.centre.x - b.centre.x, a.centre.y - b.centre.y),
+              );
+              if (a.pill && b.pill && overlap(a.pill, b.pill)) {
+                collisions.push(`"${a.name}" overprints "${b.name}"`);
+              }
+            }
+          }
+          return {
+            count: spots.length,
+            collisions,
+            closest,
+            unpositioned: unpositioned.map((spot) => spot.name),
+          };
+        });
+
+      let sawMultiple = false;
+      // ~24 s, which is two thirds of a lap at 5 deg/s — long enough for the
+      // arrows to move through every arrangement this scene can produce.
+      for (let i = 0; i < 24; i += 1) {
+        const { count, collisions, closest, unpositioned } = await sample();
+        expect(
+          unpositioned,
+          'name pill(s) never got a position from the layout pass',
+        ).toEqual([]);
+        if (count > 1) {
+          sawMultiple = true;
+          expect(collisions, `name pills overlapping: ${collisions.join('; ')}`).toEqual([]);
+          // Pushed apart in screen space, then clamped back towards the real
+          // point — so this is the clamp's floor, not the target gap.
+          expect(
+            Math.round(closest),
+            'two arrows are drawn on top of each other',
+          ).toBeGreaterThanOrEqual(36);
+        }
+        await touchPage.waitForTimeout(1000);
+      }
+
+      expect(
+        sawMultiple,
+        'never saw two signposts on screen at once, so nothing about spacing was tested',
+      ).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
 });

@@ -16,6 +16,26 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const TTS_ENDPOINT = 'https://api.elevenlabs.io/v1/text-to-speech';
 const STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
+const GROQ_TTS_ENDPOINT = 'https://api.groq.com/openai/v1/audio/speech';
+
+/**
+ * The second natural voice, on the Groq key the guide already uses.
+ *
+ * It exists because the first one ran out: ElevenLabs' free tier is 10,000
+ * characters a month and one run of the guided tour speaks about 6,000 of them,
+ * so the kiosk went robotic after a day and a half. This is billed per
+ * character (about a rupee a tour) rather than by plan.
+ *
+ * Two constraints come with it, both handled below: 200 characters per request,
+ * so anything longer is spoken in pieces; and the model is English-only, so a
+ * reply in Devanagari is left to the browser rather than being read by a voice
+ * that cannot pronounce it.
+ */
+const GROQ_TTS_MODEL = 'canopylabs/orpheus-v1-english';
+const GROQ_TTS_CHARS = 200;
+
+/** Orpheus women: Autumn, Diana, Hannah. Overridable per deployment. */
+const GROQ_DEFAULT_VOICE = 'Autumn';
 
 /** Lowest-latency multilingual voice model — it handles Hindi and Hinglish. */
 const TTS_MODEL = 'eleven_flash_v2_5';
@@ -105,13 +125,120 @@ function elevenKey(): string | undefined {
   return import.meta.env.VITE_ELEVENLABS_API_KEY;
 }
 
+/**
+ * A provider that has already refused is not asked again this session.
+ *
+ * An exhausted quota or unaccepted model terms will not fix themselves before
+ * the page reloads, and retrying costs every single line a failed round trip
+ * before it is spoken — which the visitor hears as the guide hesitating.
+ */
+const disabled = { eleven: false, groq: false };
+
+/** Split for Orpheus's 200-character limit, on sentence ends where possible. */
+export function splitForSpeech(text: string, limit = GROQ_TTS_CHARS): string[] {
+  const pieces: string[] = [];
+  // Sentence boundaries first: a break mid-clause is audible, a break between
+  // sentences is just a pause.
+  const sentences = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text];
+
+  let current = '';
+  for (const sentence of sentences) {
+    if ((current + sentence).length <= limit) {
+      current += sentence;
+      continue;
+    }
+    if (current) pieces.push(current.trim());
+    current = '';
+
+    if (sentence.length <= limit) {
+      current = sentence;
+      continue;
+    }
+    // One sentence longer than the limit — fall back to word boundaries.
+    let line = '';
+    for (const word of sentence.split(/\s+/)) {
+      if ((line + ' ' + word).trim().length > limit) {
+        if (line) pieces.push(line.trim());
+        line = word;
+      } else {
+        line = (line + ' ' + word).trim();
+      }
+    }
+    current = line;
+  }
+  if (current.trim()) pieces.push(current.trim());
+  return pieces.filter(Boolean);
+}
+
 function voiceId(): string {
   return import.meta.env.VITE_ELEVENLABS_VOICE_ID || DEFAULT_VOICE;
 }
 
+/* ── Choosing the fallback voice ───────────────────────────────────────────
+   The Web Speech API exposes no gender and no quality ranking, only a name and
+   a BCP-47 tag, so the choice has to be made by name. These are the women's
+   voices that actually ship on the platforms this kiosk runs on. */
+const FEMALE_VOICES =
+  /heera|kalpana|swara|aditi|neerja|raveena|zira|samantha|karen|moira|tessa|veena|lekha|female|woman/i;
+
+/** Named explicitly so a name that happens to contain one never slips through. */
+const MALE_VOICES = /david|mark|ravi|hemant|madhur|prabhat|daniel|alex|fred|george|male\b/i;
+
 /**
- * The fallback voice. Chrome's getVoices() is empty on first call — the list
- * arrives asynchronously — so it is read at speak time, not cached at load.
+ * Picks the best available voice, best meaning: an Indian accent, and a woman.
+ *
+ * Both were being got wrong. The code asked for `en-IN` and then matched on the
+ * language *prefix*, so on a Windows machine it settled on "Microsoft David —
+ * English (United States)": a male American voice reading Hinglish, which is
+ * why the Hindi came out mispronounced. An exact region match has to come
+ * first, and only then the fallbacks.
+ *
+ * Nothing here is guaranteed to exist. A device with no Indian voice installed
+ * gets the best English woman it has; a device with nothing at all gets the
+ * default, which still speaks.
+ */
+function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) return undefined;
+
+  const normalised = voices.map((v) => ({ voice: v, lang: v.lang.replace('_', '-').toLowerCase() }));
+  const wanted = lang.toLowerCase();
+
+  // Language before region. An English voice with an American accent still
+  // reads English correctly; a Hindi voice reading English does not. iPads make
+  // this real — iOS ships Rishi (Indian English, male) and Lekha (Hindi,
+  // female), so "any Indian woman" would put a Hindi voice on English text.
+  const sameLanguage = normalised.filter((v) => v.lang.startsWith(wanted.split('-')[0]));
+  const sameLanguageIndian = sameLanguage.filter((v) => v.lang.endsWith('-in'));
+  const anyIndian = normalised.filter((v) => v.lang.endsWith('-in'));
+
+  const female = (list: typeof normalised) =>
+    list.find((v) => FEMALE_VOICES.test(v.voice.name))?.voice;
+  const notMale = (list: typeof normalised) =>
+    list.find((v) => !MALE_VOICES.test(v.voice.name))?.voice;
+
+  return (
+    // What we are actually after: the right language, an Indian accent, a woman.
+    female(sameLanguageIndian) ??
+    // Right language, right voice, wrong accent.
+    female(sameLanguage) ??
+    // Right accent at least.
+    female(anyIndian) ??
+    // No woman available on this device: anything but a man.
+    notMale(sameLanguageIndian) ??
+    notMale(sameLanguage) ??
+    // Whatever there is. It still speaks, which beats silence.
+    sameLanguageIndian[0]?.voice ??
+    sameLanguage[0]?.voice
+  );
+}
+
+/**
+ * The fallback voice, used when ElevenLabs is unavailable — no key, a failed
+ * request, or an exhausted quota.
+ *
+ * getVoices() is empty on Chrome's first call because the list arrives
+ * asynchronously, so it is read at speak time rather than cached at load.
  */
 function browserSpeak(text: string, onEnd: () => void): void {
   if (!('speechSynthesis' in window)) {
@@ -119,15 +246,14 @@ function browserSpeak(text: string, onEnd: () => void): void {
     return;
   }
   window.speechSynthesis.cancel();
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = /[ऀ-ॿ]/.test(text) ? 'hi-IN' : 'en-IN';
-  const voices = window.speechSynthesis.getVoices();
-  const prefix = utterance.lang.split('-')[0];
-  const match =
-    voices.find((v) => v.lang.replace('_', '-').startsWith(prefix) && /google/i.test(v.name)) ??
-    voices.find((v) => v.lang.replace('_', '-').startsWith(prefix));
-  if (match) utterance.voice = match;
-  utterance.rate = 0.95;
+  const voice = pickVoice(utterance.lang);
+  if (voice) utterance.voice = voice;
+  // A shade above default. At 1.0 the stock voices plod; much beyond this and
+  // they are hard to follow in a room with other people in it.
+  utterance.rate = 1.08;
   utterance.onend = onEnd;
   utterance.onerror = onEnd;
   window.speechSynthesis.speak(utterance);
@@ -174,6 +300,13 @@ export function useSpeech(
   const levelFrame = useRef(0);
   /** Settles the line currently being spoken; see speak(). */
   const finishSpeaking = useRef<(() => void) | null>(null);
+  /**
+   * Bumped on every speak(). Everything asynchronous inside a speak() checks it
+   * before making a sound, so a slow ElevenLabs response cannot start playing
+   * over a line that replaced it — two voices at once is the one failure the
+   * visitor cannot ignore.
+   */
+  const generation = useRef(0);
 
   const audio = useRef<HTMLAudioElement | null>(null);
   const objectUrl = useRef<string | null>(null);
@@ -268,6 +401,46 @@ export function useSpeech(
     pending?.();
   }, [releaseAudio]);
 
+  /**
+   * Plays a sequence of audio blobs back to back through one element, so a
+   * reply split for Orpheus's 200-character limit is heard as one sentence
+   * rather than as several clips.
+   */
+  const playClips = useCallback(
+    (clips: Blob[], alive: () => boolean, onDone: () => void, onFail: () => void) => {
+      let index = 0;
+
+      const next = (): void => {
+        if (!alive()) return;
+        if (index >= clips.length) {
+          onDone();
+          return;
+        }
+        const url = URL.createObjectURL(clips[index]);
+        index += 1;
+        objectUrl.current = url;
+        const element = new Audio(url);
+        meterPlayback(element);
+        audio.current = element;
+        element.onended = () => {
+          releaseAudio();
+          next();
+        };
+        element.onerror = () => {
+          releaseAudio();
+          onFail();
+        };
+        void element.play().catch(() => {
+          releaseAudio();
+          onFail();
+        });
+      };
+
+      next();
+    },
+    [meterPlayback, releaseAudio],
+  );
+
   const speak = useCallback(
     (text: string, onEnd?: () => void) => {
       const line = text.trim();
@@ -278,6 +451,10 @@ export function useSpeech(
 
       stopSpeaking();
       setSpeaking(true);
+
+      generation.current += 1;
+      const mine = generation.current;
+      const alive = (): boolean => generation.current === mine;
 
       // Fires exactly once however this line ends — played out, failed, or
       // cancelled. The tour advances on it, so a path that forgets to call it
@@ -291,55 +468,99 @@ export function useSpeech(
       };
       finishSpeaking.current = finish;
 
-      const key = elevenKey();
-      if (!key) {
-        browserSpeak(line, finish);
-        return;
-      }
-
       const controller = new AbortController();
       ttsRequest.current = controller;
 
-      void (async () => {
-        try {
-          const response = await fetch(`${TTS_ENDPOINT}/${voiceId()}`, {
+      // releaseAudio() before handing the line to another engine, every time:
+      // starting a second voice while the first element is still going is how a
+      // visitor ends up being read to by two people at once.
+      const fallToBrowser = (why: string, error?: unknown): void => {
+        if (!alive()) return;
+        releaseAudio();
+        console.warn(`[guide] ${why} — using the browser voice`, error ?? '');
+        browserSpeak(line, finish);
+      };
+
+      /** ElevenLabs. Best voice, and the only one that reads Devanagari. */
+      const viaElevenLabs = async (key: string): Promise<boolean> => {
+        const response = await fetch(`${TTS_ENDPOINT}/${voiceId()}`, {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: line, model_id: TTS_MODEL }),
+        });
+        if (!response.ok) {
+          // 401 here is an exhausted quota as often as a bad key, and neither
+          // recovers before a reload.
+          if (response.status === 401 || response.status === 429) disabled.eleven = true;
+          throw new Error(`ElevenLabs ${response.status}`);
+        }
+        const blob = await response.blob();
+        if (!alive()) return true;
+        playClips([blob], alive, finish, () => fallToBrowser('ElevenLabs audio would not play'));
+        return true;
+      };
+
+      /**
+       * Groq's Orpheus. English only, 200 characters a request — so Devanagari
+       * is left alone and longer lines are spoken in pieces.
+       */
+      const viaGroq = async (key: string): Promise<boolean> => {
+        if (/[\u0900-\u097F]/.test(line)) return false;
+
+        const pieces = splitForSpeech(line);
+        const clips: Blob[] = [];
+        for (const piece of pieces) {
+          const response = await fetch(GROQ_TTS_ENDPOINT, {
             method: 'POST',
             signal: controller.signal,
-            headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: line, model_id: TTS_MODEL }),
+            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: GROQ_TTS_MODEL,
+              input: piece,
+              voice: import.meta.env.VITE_GROQ_TTS_VOICE || GROQ_DEFAULT_VOICE,
+              response_format: 'wav',
+            }),
           });
-          if (!response.ok) throw new Error(`ElevenLabs ${response.status}`);
-
-          const blob = await response.blob();
-          if (controller.signal.aborted) return;
-
-          const url = URL.createObjectURL(blob);
-          objectUrl.current = url;
-          const element = new Audio(url);
-          meterPlayback(element);
-          audio.current = element;
-          element.onended = () => {
-            releaseAudio();
-            finish();
-          };
-          element.onerror = () => {
-            releaseAudio();
-            finish();
-          };
-          await element.play();
-        } catch (error) {
-          if (controller.signal.aborted) return;
-          // A quota problem, a rejected key, or a browser that refused
-          // autoplay — say the line in the browser's own voice rather than
-          // leaving the visitor with silence and no explanation.
-          console.warn('[guide] ElevenLabs failed, using the browser voice', error);
-          browserSpeak(line, finish);
-        } finally {
-          if (ttsRequest.current === controller) ttsRequest.current = null;
+          if (!response.ok) {
+            // The model needs its terms accepted once, by the account owner, in
+            // the Groq console. Until then this is a permanent 400 and there is
+            // no point asking again this session.
+            if (response.status === 400 || response.status === 401) disabled.groq = true;
+            throw new Error(`Groq TTS ${response.status}`);
+          }
+          clips.push(await response.blob());
+          if (!alive()) return true;
         }
-      })();
+        playClips(clips, alive, finish, () => fallToBrowser('Groq audio would not play'));
+        return true;
+      };
+
+      void (async () => {
+        const eleven = elevenKey();
+        const groq = import.meta.env.VITE_GROQ_API_KEY;
+
+        try {
+          if (eleven && !disabled.eleven && (await viaElevenLabs(eleven))) return;
+        } catch (error) {
+          if (controller.signal.aborted || !alive()) return;
+          console.warn('[guide] ElevenLabs unavailable', error);
+        }
+
+        try {
+          if (groq && !disabled.groq && (await viaGroq(groq))) return;
+        } catch (error) {
+          if (controller.signal.aborted || !alive()) return;
+          console.warn('[guide] Groq voice unavailable', error);
+        }
+
+        if (controller.signal.aborted || !alive()) return;
+        fallToBrowser('no natural voice available');
+      })().finally(() => {
+        if (ttsRequest.current === controller) ttsRequest.current = null;
+      });
     },
-    [releaseAudio, stopSpeaking],
+    [playClips, releaseAudio, stopSpeaking],
   );
 
   const stopListening = useCallback(() => {

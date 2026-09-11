@@ -57,6 +57,13 @@ export default function ChatWidget() {
   const [muted, setMuted] = useState(false);
   /** Shown briefly when the microphone picked up nothing worth sending. */
   const [missedIt, setMissedIt] = useState(false);
+  /**
+   * Hands-free: the visitor spoke, so the microphone re-opens by itself once
+   * the guide has finished answering, and the conversation carries on without
+   * anyone reaching for the screen again. Switched off the moment they type,
+   * close the panel, or start the tour.
+   */
+  const conversing = useRef(false);
   /** Index of the tour stop being narrated, or null when no tour is running. */
   const [tourStop, setTourStop] = useState<number | null>(null);
   const tourTimer = useRef(0);
@@ -102,7 +109,15 @@ export default function ChatWidget() {
           signal: controller.signal,
         });
         setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        if (!muted) speech.speak(reply);
+        if (!muted) {
+          // Listening again the instant the answer ends is what makes this feel
+          // like talking to something rather than operating it.
+          speech.speak(reply, () => {
+            if (conversing.current) speech.startListening();
+          });
+        } else if (conversing.current) {
+          speech.startListening();
+        }
       } catch (error) {
         if (controller.signal.aborted) return;
         setMessages((prev) => [...prev, { role: 'assistant', content: explainError(error) }]);
@@ -123,6 +138,9 @@ export default function ChatWidget() {
     // reads as a broken microphone, and answering a transcript Whisper guessed
     // at is how the guide ended up replying to questions nobody asked.
     useCallback(() => {
+      // Heard nothing. Hands-free ends here rather than re-opening the microphone
+      // at an empty room over and over.
+      conversing.current = false;
       setMissedIt(true);
       window.setTimeout(() => setMissedIt(false), 4000);
     }, []),
@@ -133,6 +151,7 @@ export default function ChatWidget() {
   }, [messages, partial]);
 
   const endTour = useCallback(() => {
+    conversing.current = false;
     window.clearTimeout(tourTimer.current);
     setTourStop(null);
     speech.stopSpeaking();
@@ -196,6 +215,7 @@ export default function ChatWidget() {
   // as a bug, and on a shared screen it talks over the next visitor.
   const close = useCallback(() => {
     setOpen(false);
+    conversing.current = false;
     window.clearTimeout(tourTimer.current);
     setTourStop(null);
     speech.stopSpeaking();
@@ -523,7 +543,10 @@ export default function ChatWidget() {
                     <Waveform levelRef={speech.levelRef} />
                     <span className="flex-1 text-[11px] text-[#90C7FF]">Go ahead, I'm listening</span>
                     <button
-                      onClick={speech.stopListening}
+                      onClick={() => {
+                        conversing.current = false;
+                        speech.stopListening();
+                      }}
                       aria-label="Stop listening"
                       className="text-[11px] text-white/50 hover:text-white transition-colors"
                     >
@@ -549,7 +572,10 @@ export default function ChatWidget() {
                     {speech.canListen && (
                       <button
                         type="button"
-                        onClick={speech.startListening}
+                        onClick={() => {
+                          conversing.current = true;
+                          speech.startListening();
+                        }}
                         disabled={speech.transcribing}
                         aria-label="Speak"
                         className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:text-white transition-all disabled:opacity-40"
@@ -561,7 +587,13 @@ export default function ChatWidget() {
 
                     <input
                       value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
+                      onChange={(e) => {
+                        // Reaching for the keyboard ends the hands-free
+                        // conversation; nobody wants the microphone opening
+                        // itself while they are typing.
+                        conversing.current = false;
+                        setDraft(e.target.value);
+                      }}
                       placeholder={speech.transcribing ? 'One moment…' : 'Ask about this screen…'}
                       aria-label="Your question"
                       className="flex-1 min-w-0 bg-transparent text-[12.5px] text-white placeholder:text-white/35 outline-none"

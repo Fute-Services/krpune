@@ -105,18 +105,24 @@ function isNoise(text: string): boolean {
    rather than waiting to be told. */
 
 /**
- * The quietest thing still treated as speech — and, just as importantly, the
- * loudest thing still treated as background.
+ * The quietest thing still treated as speech.
  *
- * This is a kiosk on a sales floor with other people talking in it. It has to
- * hear the visitor standing at the screen and ignore the conversation happening
- * six feet away, so the bar is set near-field rather than sensitive. Measured
- * through the microphone: someone at the screen peaks around 0.10 even speaking
- * softly, someone across the room around 0.02, and an empty room sits at 0.001.
- * 0.05 sits in the gap: measured, a nearby voice peaked at 0.079 and the same
- * clip attenuated to across-the-room peaked at 0.029.
+ * This number has been wrong in both directions. It started at 0.015, taken
+ * from a clip recorded straight into a microphone, and the guide could not hear
+ * anyone standing normally at the screen. It was then raised to 0.05 to stop it
+ * picking up the room — measured, again, by attenuating that same studio clip
+ * rather than by listening to the actual kiosk microphone, and it went deaf
+ * again.
+ *
+ * So it is now deliberately low, and the room's own noise floor does the
+ * discriminating: the recorder only refuses audio that never rose meaningfully
+ * above the room it was recorded in. Everything else goes to Whisper, which is
+ * a far better judge of whether words were said than a loudness number is, and
+ * whose confidence score is already checked. The cost of guessing wrong here is
+ * asymmetric — a stray transcript is filtered downstream, while a visitor who
+ * is not heard simply gives up.
  */
-const SPEECH_LEVEL = 0.05;
+const SPEECH_LEVEL = 0.012;
 /** Quiet for this long after speech has started → they are done. */
 const SILENCE_MS = 1400;
 /** Nothing said at all within this → they tapped it by accident. */
@@ -741,7 +747,7 @@ export function useSpeech(
         }
 
         const floor = noiseSamples > 0 ? noiseFloor / noiseSamples : 0;
-        const threshold = Math.max(SPEECH_LEVEL, floor * 3);
+        const threshold = Math.max(SPEECH_LEVEL, floor * 2.5);
         if (level > peak) peak = level;
 
         if (level > threshold) {
@@ -780,7 +786,9 @@ export function useSpeech(
         // from the screen. The loudest moment of the recording gets a second
         // say, measured against the room's own noise floor.
         const room = noiseSamples > 0 ? noiseFloor / noiseSamples : 0;
-        const loudEnough = peak > Math.max(SPEECH_LEVEL, room * 3);
+        // Deliberately looser than the live threshold: this only has to rule
+        // out a recording of nothing at all.
+        const loudEnough = peak > Math.max(0.006, room * 2);
 
         console.info(
           `[guide] mic: peak=${peak.toFixed(4)} room=${room.toFixed(4)} ` +

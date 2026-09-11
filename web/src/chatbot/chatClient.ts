@@ -223,13 +223,60 @@ export async function ask(options: AskOptions): Promise<string> {
   return scrubMeta(reply).trim();
 }
 
+/**
+ * How long to wait out a rate limit before giving up and telling the visitor.
+ *
+ * The account allows 8,000 tokens a minute and the bucket refills continuously,
+ * so a limit hit while someone is talking is usually over in a second or two —
+ * shorter than the pause they would expect anyway. Showing "a lot of people are
+ * asking at once" for that is worse than simply waiting.
+ */
+const RATE_LIMIT_WAIT_MS = 12_000;
+
 /** One request. Returns the spoken text plus any tool calls the model made. */
 async function streamOnce(
   messages: WireMessage[],
   onText: (textSoFar: string) => void,
   signal?: AbortSignal,
 ): Promise<{ text: string; toolCalls: ToolCall[] }> {
-  const response = await fetch(ENDPOINT, {
+  const response = await requestWithRetry(messages, signal);
+
+  if (!response.ok || !response.body) {
+    throw new ChatError(await errorText(response), response.status);
+  }
+
+  return readStream(response, onText);
+}
+
+/**
+ * Sends the request, waiting out a rate limit rather than surfacing it.
+ *
+ * Groq returns the exact wait in `retry-after`, and it is typically under two
+ * seconds — the visitor hears a slightly longer pause instead of an apology.
+ * Only a limit that outlasts the budget above reaches them as an error.
+ */
+async function requestWithRetry(
+  messages: WireMessage[],
+  signal?: AbortSignal,
+): Promise<Response> {
+  const deadline = Date.now() + RATE_LIMIT_WAIT_MS;
+
+  for (;;) {
+    const response = await send(messages, signal);
+    if (response.status !== 429) return response;
+
+    const header = Number(response.headers.get('retry-after'));
+    const wait = Number.isFinite(header) && header > 0 ? header * 1000 : 1500;
+    if (Date.now() + wait > deadline) return response;
+
+    console.info(`[guide] rate limited, waiting ${wait} ms`);
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    if (signal?.aborted) return response;
+  }
+}
+
+function send(messages: WireMessage[], signal?: AbortSignal): Promise<Response> {
+  return fetch(ENDPOINT, {
     method: 'POST',
     signal,
     headers: {
@@ -253,12 +300,14 @@ async function streamOnce(
       stream: true,
     }),
   });
+}
 
-  if (!response.ok || !response.body) {
-    throw new ChatError(await errorText(response), response.status);
-  }
-
-  const reader = response.body.getReader();
+/** Reads one SSE response into text and any tool calls it carried. */
+async function readStream(
+  response: Response,
+  onText: (textSoFar: string) => void,
+): Promise<{ text: string; toolCalls: ToolCall[] }> {
+  const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let text = '';

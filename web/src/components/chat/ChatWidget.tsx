@@ -23,8 +23,13 @@ import { DWELL_AFTER_SPEECH_MS, minimumStopMs, TOUR, tourMinutes } from '@/chatb
 import tourAudio from '@/chatbot/tourAudio.json';
 import { VoiceOrb, Waveform } from './VoiceVisuals';
 
-/** Kept short — the brief goes up every turn and the account has a token cap. */
-const MAX_HISTORY = 12;
+/**
+ * Kept short because the account allows 8,000 tokens a minute, and a hands-free
+ * conversation spends them fast: every turn resends the brief plus this much
+ * history, and a question that navigates costs two requests. Six messages is
+ * three exchanges, which is as much as anyone refers back to.
+ */
+const MAX_HISTORY = 6;
 
 /** The app's glass, lifted from Sidebar so the two cannot drift apart. */
 const GLASS = {

@@ -27,12 +27,63 @@ const DEFAULT_VOICE = 'EXAVITQu4vr4xnSDxMaL';
 const STT_MODEL = 'whisper-large-v3-turbo';
 
 /**
- * Whisper is told what it is listening to. Without this it hears "Commerzone
- * Baner" as "commerce zone banner" and "Raheja" as almost anything, and a
- * mangled place name sends the whole answer off course.
+ * A hint about the subject, deliberately phrased as one ordinary sentence.
+ *
+ * It used to be a list of project terms — "Terms: Commerzone, Baner, Raheja,
+ * podium, terrace, amenities..." — and that list was the reason the guide kept
+ * answering questions nobody asked. Whisper treats the prompt as text preceding
+ * the audio, so when the audio carries no clear speech it simply continues the
+ * prompt: a visitor got back "Terms & Cormac, Raheja, podium, terrace, and the"
+ * as their own question.
+ *
+ * Measured against silence and against a real question:
+ *   term-list prompt  silence -> "Terms in the background."  (logprob -1.34)
+ *   one sentence      silence -> nothing                     (logprob -0.58)
+ *   no prompt         silence -> nothing                     (logprob -0.38)
+ * and on real speech the term list scored slightly *worse* than no prompt at
+ * all, so it was never buying the accuracy it was added for. A sentence keeps
+ * the names in context without being a list that can be recited back.
  */
-const STT_PROMPT =
-  'A visitor at the K Raheja Corp experience centre asking about Commerzone Baner, a commercial project in Baner, Pune. They may speak English, Hindi or a mix of both. Terms: Commerzone, Baner, Raheja, podium, terrace, amenities, refuge floor, carpet area, Tower 1, Tower 2, LEED Gold.';
+const STT_PROMPT = 'This is a question about Commerzone Baner, the K Raheja Corp project in Pune.';
+
+/**
+ * Below this the transcript is noise Whisper guessed at rather than words
+ * someone said. Garbage from silence scored -1.34; real questions scored -0.09
+ * to -0.13. -0.9 sits well clear of honest speech in a noisy room.
+ */
+const MIN_CONFIDENCE = -0.9;
+
+/**
+ * What Whisper emits when handed audio with nothing in it. These are not things
+ * a visitor at a kiosk says, and treating one as a question means the guide
+ * answers thin air.
+ */
+const HALLUCINATIONS = new Set([
+  '',
+  '.',
+  'you',
+  'bye',
+  'thank you',
+  'thanks',
+  'thanks for watching',
+  'thank you for watching',
+  'okay',
+  'ok',
+  'the',
+  'so',
+  'um',
+  'uh',
+]);
+
+function isNoise(text: string): boolean {
+  const bare = text
+    .toLowerCase()
+    .replace(/[.,!?;:'"()\-—’]/g, '')
+    .trim();
+  if (HALLUCINATIONS.has(bare)) return true;
+  // A "question" of one or two characters is a cough, not speech.
+  return bare.replace(/\s/g, '').length < 3;
+}
 
 /* ── When to stop recording ────────────────────────────────────────────────
    The visitor should be able to say their piece and get an answer without
@@ -47,6 +98,8 @@ const SILENCE_MS = 1400;
 const NO_SPEECH_MS = 7000;
 /** Hard ceiling, so a noisy room cannot hold the microphone open forever. */
 const MAX_RECORDING_MS = 30000;
+/** Opening moments spent measuring the room rather than judging it. */
+const CALIBRATION_MS = 350;
 
 function elevenKey(): string | undefined {
   return import.meta.env.VITE_ELEVENLABS_API_KEY;
@@ -107,7 +160,12 @@ export interface Speech {
   stopListening: () => void;
 }
 
-export function useSpeech(onTranscript: (text: string) => void): Speech {
+export function useSpeech(
+  onTranscript: (text: string) => void,
+  /** Nothing was said, or what came back could not be trusted. Told to the
+   *  visitor, because silently doing nothing reads as a broken microphone. */
+  onNothingHeard?: () => void,
+): Speech {
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -131,6 +189,8 @@ export function useSpeech(onTranscript: (text: string) => void): Speech {
   // reach the current handler rather than the one from an older render.
   const handler = useRef(onTranscript);
   handler.current = onTranscript;
+  const noSpeech = useRef(onNothingHeard);
+  noSpeech.current = onNothingHeard;
 
   /**
    * Feeds levelRef from whatever is currently making sound.
@@ -296,7 +356,18 @@ export function useSpeech(onTranscript: (text: string) => void): Speech {
     void (async () => {
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          // An experience centre is a hard room: other visitors, the app's own
+          // videos playing through the speakers, air conditioning. Letting the
+          // browser cancel the echo and lift the voice out of it is worth more
+          // than anything that can be done to the audio afterwards — without
+          // echo cancellation the guide transcribes its own answer.
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
       } catch {
         // Permission denied or no microphone. Typing still works.
         setListening(false);
@@ -327,6 +398,13 @@ export function useSpeech(onTranscript: (text: string) => void): Speech {
       let heardSpeech = false;
       let quietSince = 0;
 
+      // The first moments are measured rather than assumed, so the bar for
+      // "someone is talking" sits above whatever this particular room sounds
+      // like. A fixed threshold is either deaf in a quiet office or permanently
+      // triggered by a busy sales floor.
+      let noiseFloor = 0;
+      let noiseSamples = 0;
+
       const watchdog = window.setInterval(() => {
         if (rec.state !== 'recording') return;
         analyser.getFloatTimeDomainData(samples);
@@ -336,7 +414,17 @@ export function useSpeech(onTranscript: (text: string) => void): Speech {
         const level = Math.sqrt(sum / samples.length);
 
         const elapsed = Date.now() - startedAt;
-        if (level > SPEECH_LEVEL) {
+
+        if (elapsed < CALIBRATION_MS) {
+          noiseFloor += level;
+          noiseSamples += 1;
+          return;
+        }
+
+        const floor = noiseSamples > 0 ? noiseFloor / noiseSamples : 0;
+        const threshold = Math.max(SPEECH_LEVEL, floor * 2.5);
+
+        if (level > threshold) {
           heardSpeech = true;
           quietSince = 0;
         } else if (heardSpeech) {
@@ -364,9 +452,16 @@ export function useSpeech(onTranscript: (text: string) => void): Speech {
 
         const blob = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' });
         chunks.current = [];
-        // Anything this short is a mis-tap, not speech, and Whisper charges for
-        // it anyway.
-        if (blob.size < 2000) return;
+
+        // Do not transcribe a room that never spoke. This is where the wrong
+        // questions were coming from: the recorder stopped after seven seconds
+        // of nothing and sent those seven seconds to Whisper anyway, which
+        // dutifully invented a sentence out of the room tone. A mis-tap is now
+        // a mis-tap, not a question the visitor never asked.
+        if (!heardSpeech || blob.size < 2000) {
+          noSpeech.current?.();
+          return;
+        }
 
         setTranscribing(true);
         void (async () => {
@@ -377,6 +472,9 @@ export function useSpeech(onTranscript: (text: string) => void): Speech {
             form.append('file', new File([blob], `speech.${ext}`, { type: blob.type }));
             form.append('model', STT_MODEL);
             form.append('prompt', STT_PROMPT);
+            // verbose_json carries per-segment avg_logprob, which is the only
+            // way to tell a confident transcript from a guess.
+            form.append('response_format', 'verbose_json');
             // Greedy decoding: this is a short question, not prose, and a
             // creative transcript is a wrong transcript.
             form.append('temperature', '0');
@@ -388,8 +486,29 @@ export function useSpeech(onTranscript: (text: string) => void): Speech {
               body: form,
             });
             if (!response.ok) throw new Error(`Whisper ${response.status}`);
-            const { text } = (await response.json()) as { text?: string };
-            if (text?.trim()) handler.current(text.trim());
+            const result = (await response.json()) as {
+              text?: string;
+              segments?: { avg_logprob?: number }[];
+            };
+
+            const text = (result.text ?? '').trim();
+            const confidence = result.segments?.length
+              ? Math.min(...result.segments.map((s) => s.avg_logprob ?? 0))
+              : 0;
+
+            if (!text || isNoise(text)) {
+              noSpeech.current?.();
+              return;
+            }
+            if (confidence < MIN_CONFIDENCE) {
+              // Words came back, but Whisper was guessing. Better to ask the
+              // visitor to repeat themselves than to answer a question they
+              // did not ask.
+              console.warn(`[guide] discarded a low-confidence transcript (${confidence.toFixed(2)}): ${text}`);
+              noSpeech.current?.();
+              return;
+            }
+            handler.current(text);
           } catch (error) {
             console.warn('[guide] transcription failed', error);
           } finally {

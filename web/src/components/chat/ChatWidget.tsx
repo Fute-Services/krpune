@@ -54,6 +54,8 @@ export default function ChatWidget() {
   const [streaming, setStreaming] = useState(false);
   const [partial, setPartial] = useState('');
   const [muted, setMuted] = useState(false);
+  /** Shown briefly when the microphone picked up nothing worth sending. */
+  const [missedIt, setMissedIt] = useState(false);
   /** Index of the tour stop being narrated, or null when no tour is running. */
   const [tourStop, setTourStop] = useState<number | null>(null);
   const tourTimer = useRef(0);
@@ -116,6 +118,13 @@ export default function ChatWidget() {
 
   const speech = useSpeech(
     useCallback((transcript: string) => void send(transcript), [send]),
+    // Nothing usable was heard. Saying so beats both alternatives: silence
+    // reads as a broken microphone, and answering a transcript Whisper guessed
+    // at is how the guide ended up replying to questions nobody asked.
+    useCallback(() => {
+      setMissedIt(true);
+      window.setTimeout(() => setMissedIt(false), 4000);
+    }, []),
   );
 
   useEffect(() => {
@@ -259,7 +268,7 @@ export default function ChatWidget() {
             <Sheen radius={20} />
 
             {/* Header */}
-            <header className="relative flex items-center gap-3 px-4 pt-3.5 pb-3">
+            <header className="relative flex items-center gap-3 px-4 pt-3.5 pb-3 shrink-0">
               <VoiceOrb levelRef={speech.levelRef} active={busy} size={44} />
               <div className="flex-1 min-w-0">
                 <h2 className="text-[13px] font-semibold leading-tight tracking-wide">
@@ -303,7 +312,11 @@ export default function ChatWidget() {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="relative overflow-hidden"
+                  // shrink-0 matters: without it flexbox squashes this bar as
+                  // the conversation grows, the overflow-hidden clips it, and
+                  // the message list ends up painted over Skip and Stop — the
+                  // two controls a visitor being driven around most needs.
+                  className="relative overflow-hidden shrink-0"
                 >
                   <div className="flex items-center gap-3 px-4 py-2.5">
                     <span className="text-[10.5px] text-[#90C7FF] tabular-nums shrink-0">
@@ -460,6 +473,23 @@ export default function ChatWidget() {
                   ))}
                 </div>
               )}
+
+              {/* Nothing usable was heard. Said out loud, because silence after
+                  tapping a microphone reads as a broken microphone — and the
+                  alternative, answering a transcript that was guessed at, is
+                  what put questions nobody asked into this panel. */}
+              <AnimatePresence>
+                {missedIt && !speech.listening && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-[11.5px] leading-relaxed text-amber-300/85"
+                  >
+                    I didn&rsquo;t catch that. Tap the mic and say it again, or type it here.
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Composer — or the listening state, which replaces it entirely so

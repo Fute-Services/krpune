@@ -77,9 +77,16 @@ test('asking a question mid-tour stops the tour', async ({ page }) => {
 
   await expect(panel.getByText(/Tour ·/)).toHaveCount(0, { timeout: 15_000 });
 
-  // And it stays where the visitor stopped it rather than drifting on.
-  const url = page.url();
+  // The tour must not resume — but the guide is still free to navigate on its
+  // own: answering "kitne acre hai?" by opening Project Info, the screen that
+  // says nine acres, is the feature working. So this checks that the next
+  // stop's narration never arrives, not that the app stayed still. An earlier
+  // version asserted the URL was unchanged and failed on a correct answer.
+  const nextStopOpening = TOUR[1].line.slice(0, 16);
   await page.waitForTimeout(12_000);
-  expect(page.url(), 'the tour kept navigating after it was interrupted').toBe(url);
+  expect(
+    (await panel.innerText()).replace(/\s+/g, ' '),
+    'the tour carried on narrating after it was interrupted',
+  ).not.toContain(nextStopOpening);
   console.log('PANEL TAIL: ' + (await panel.innerText()).replace(/\s+/g, ' ').slice(-180));
 });

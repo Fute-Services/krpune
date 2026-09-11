@@ -21,7 +21,8 @@
     "verify:build": "node scripts/verify-build.mjs",
     "test:offline": "playwright test",
     "panos:optimize": "node scripts/optimize-panoramas.mjs",
-    "icons:generate": "node scripts/generate-icons.mjs"
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "tour:audio": "node scripts/generate-tour-audio.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

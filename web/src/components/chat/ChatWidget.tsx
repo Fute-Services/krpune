@@ -20,6 +20,7 @@ import { ask, explainError, hasApiKey, type ChatMessage } from '@/chatbot/chatCl
 import { pageFor, PROJECT_NAME } from '@/chatbot/knowledge';
 import { useSpeech } from '@/chatbot/useSpeech';
 import { DWELL_AFTER_SPEECH_MS, minimumStopMs, TOUR, tourMinutes } from '@/chatbot/tour';
+import tourAudio from '@/chatbot/tourAudio.json';
 import { VoiceOrb, Waveform } from './VoiceVisuals';
 
 /** Kept short — the brief goes up every turn and the account has a token cap. */
@@ -173,7 +174,13 @@ export default function ChatWidget() {
       );
     };
 
+    // A clip rendered by scripts/generate-tour-audio.mjs if there is one — the
+    // narration never changes, so paying to synthesise it on every run was what
+    // emptied the voice account in the first place.
+    const clip = (tourAudio as Record<string, string>)[stop.path];
+
     if (muted) advance();
+    else if (clip) speech.speakClip(clip, stop.line, advance);
     else speech.speak(stop.line, advance);
 
     return () => window.clearTimeout(tourTimer.current);

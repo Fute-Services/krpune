@@ -270,6 +270,11 @@ export interface Speech {
    * to the DOM directly.
    */
   levelRef: React.RefObject<number>;
+  /**
+   * Play a pre-rendered clip instead of paying to synthesise the line again,
+   * falling back to speak() if the file is missing. See scripts/generate-tour-audio.mjs.
+   */
+  speakClip: (url: string, fallbackText: string, onEnd?: () => void) => void;
   /** Speak a line. Cancels whatever is currently being said. `onEnd` fires when
    *  the line has finished, or immediately if it could not be spoken at all —
    *  the tour steps on it, so it must never simply not arrive. */
@@ -563,6 +568,61 @@ export function useSpeech(
     [playClips, releaseAudio, stopSpeaking],
   );
 
+  /**
+   * Plays narration that was rendered ahead of time.
+   *
+   * The tour's lines never change, so buying their audio again on every run was
+   * simply money set on fire — about 6,000 characters a run, against a free
+   * tier of 10,000. A rendered clip costs nothing, starts instantly instead of
+   * after a round trip, and plays with the network off like everything else in
+   * this app.
+   *
+   * Falls back to speaking the line if the file is not there, so a deployment
+   * where the clips were never generated behaves exactly as before.
+   */
+  const speakClip = useCallback(
+    (url: string, fallbackText: string, onEnd?: () => void) => {
+      stopSpeaking();
+      setSpeaking(true);
+
+      generation.current += 1;
+      const mine = generation.current;
+      const alive = (): boolean => generation.current === mine;
+
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        setSpeaking(false);
+        onEnd?.();
+      };
+      finishSpeaking.current = finish;
+
+      const element = new Audio(url);
+      meterPlayback(element);
+      audio.current = element;
+      element.onended = () => {
+        releaseAudio();
+        finish();
+      };
+      element.onerror = () => {
+        if (!alive()) return;
+        releaseAudio();
+        // Missing or unplayable clip: say it the expensive way rather than
+        // leaving a silent screen in the middle of a tour.
+        settled = true;
+        speak(fallbackText, onEnd);
+      };
+      void element.play().catch(() => {
+        if (!alive()) return;
+        releaseAudio();
+        settled = true;
+        speak(fallbackText, onEnd);
+      });
+    },
+    [meterPlayback, releaseAudio, speak, stopSpeaking],
+  );
+
   const stopListening = useCallback(() => {
     // The transcription is kicked off by the recorder's onstop handler below.
     if (recorder.current?.state === 'recording') recorder.current.stop();
@@ -760,6 +820,7 @@ export function useSpeech(
   return {
     levelRef,
     speak,
+    speakClip,
     stopSpeaking,
     speaking,
     canListen,

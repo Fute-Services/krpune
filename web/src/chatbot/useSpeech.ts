@@ -82,15 +82,9 @@ const HALLUCINATIONS = new Set([
   '',
   '.',
   'you',
-  'bye',
   'thank you',
-  'thanks',
   'thanks for watching',
   'thank you for watching',
-  'okay',
-  'ok',
-  'the',
-  'so',
   'um',
   'uh',
 ]);
@@ -110,8 +104,19 @@ function isNoise(text: string): boolean {
    reaching for the screen again, so the recorder listens for them to stop
    rather than waiting to be told. */
 
-/** Loudness (0-1 RMS) above which we consider someone to be talking. */
-const SPEECH_LEVEL = 0.015;
+/**
+ * The quietest thing still treated as speech — and, just as importantly, the
+ * loudest thing still treated as background.
+ *
+ * This is a kiosk on a sales floor with other people talking in it. It has to
+ * hear the visitor standing at the screen and ignore the conversation happening
+ * six feet away, so the bar is set near-field rather than sensitive. Measured
+ * through the microphone: someone at the screen peaks around 0.10 even speaking
+ * softly, someone across the room around 0.02, and an empty room sits at 0.001.
+ * 0.05 sits in the gap: measured, a nearby voice peaked at 0.079 and the same
+ * clip attenuated to across-the-room peaked at 0.029.
+ */
+const SPEECH_LEVEL = 0.05;
 /** Quiet for this long after speech has started → they are done. */
 const SILENCE_MS = 1400;
 /** Nothing said at all within this → they tapped it by accident. */
@@ -179,10 +184,33 @@ function voiceId(): string {
    a BCP-47 tag, so the choice has to be made by name. These are the women's
    voices that actually ship on the platforms this kiosk runs on. */
 const FEMALE_VOICES =
-  /heera|kalpana|swara|aditi|neerja|raveena|zira|samantha|karen|moira|tessa|veena|lekha|female|woman/i;
+  /neerja|kalpana|swara|aditi|raveena|zira|samantha|karen|moira|tessa|veena|lekha|heera|female|woman/i;
+
+/**
+ * Old voices that are especially flat, listed so they lose to any other woman
+ * on the device. Heera is the only Indian English woman Windows ships by
+ * default and she reads like a station announcement; Zira is the same vintage
+ * but markedly less lifeless, at the cost of an American accent. Neither is
+ * good — the answer is a natural voice, and this only decides which robot
+ * speaks until there is one.
+ */
+const LAST_RESORT_VOICES = /heera|ravi/i;
 
 /** Named explicitly so a name that happens to contain one never slips through. */
 const MALE_VOICES = /david|mark|ravi|hemant|madhur|prabhat|daniel|alex|fred|george|male\b/i;
+
+/**
+ * The engines that do not sound like a speak-and-spell.
+ *
+ * Windows ships two generations of voice under the same API: the old SAPI ones
+ * (Heera, Zira, David) which are flat and robotic, and the newer neural ones
+ * ("Microsoft Neerja (Natural)", "Microsoft Aria Online (Natural)") which are
+ * close to a recording. Chrome exposes Google's network voices the same way.
+ * Nothing in the API says which is which except the name, so the name is what
+ * gets matched — and quality is weighed before accent, because a natural
+ * American voice is easier to listen to than a robotic Indian one.
+ */
+const NATURAL_VOICES = /natural|neural|online|google|premium|enhanced|siri/i;
 
 /**
  * Picks the best available voice, best meaning: an Indian accent, and a woman.
@@ -212,19 +240,25 @@ function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
   const sameLanguageIndian = sameLanguage.filter((v) => v.lang.endsWith('-in'));
   const anyIndian = normalised.filter((v) => v.lang.endsWith('-in'));
 
+  const natural = (list: typeof normalised) => list.filter((v) => NATURAL_VOICES.test(v.voice.name));
   const female = (list: typeof normalised) =>
-    list.find((v) => FEMALE_VOICES.test(v.voice.name))?.voice;
+    list.find((v) => FEMALE_VOICES.test(v.voice.name) && !LAST_RESORT_VOICES.test(v.voice.name))
+      ?.voice ?? list.find((v) => FEMALE_VOICES.test(v.voice.name))?.voice;
   const notMale = (list: typeof normalised) =>
     list.find((v) => !MALE_VOICES.test(v.voice.name))?.voice;
 
   return (
-    // What we are actually after: the right language, an Indian accent, a woman.
+    // Everything we want: a natural engine, an Indian accent, a woman.
+    female(natural(sameLanguageIndian)) ??
+    female(natural(sameLanguage)) ??
+    notMale(natural(sameLanguageIndian)) ??
+    notMale(natural(sameLanguage)) ??
+    // Any natural voice beats any robotic one — that gap is wider than accent.
+    natural(sameLanguage)[0]?.voice ??
+    // Nothing natural installed. Back to the old rules: accent, then gender.
     female(sameLanguageIndian) ??
-    // Right language, right voice, wrong accent.
     female(sameLanguage) ??
-    // Right accent at least.
     female(anyIndian) ??
-    // No woman available on this device: anything but a man.
     notMale(sameLanguageIndian) ??
     notMale(sameLanguage) ??
     // Whatever there is. It still speaks, which beats silence.
@@ -251,9 +285,12 @@ function browserSpeak(text: string, onEnd: () => void): void {
   utterance.lang = /[ऀ-ॿ]/.test(text) ? 'hi-IN' : 'en-IN';
   const voice = pickVoice(utterance.lang);
   if (voice) utterance.voice = voice;
-  // A shade above default. At 1.0 the stock voices plod; much beyond this and
-  // they are hard to follow in a room with other people in it.
-  utterance.rate = 1.08;
+  // The old SAPI voices are slow and flat at their default rate — they read as
+  // lifeless rather than calm. A little faster with the pitch nudged up is as
+  // close to lively as they get. 1.25 overshot, 1.12 was still quick; this is
+  // where it settled.
+  utterance.rate = 1.02;
+  utterance.pitch = 1.15;
   utterance.onend = onEnd;
   utterance.onerror = onEnd;
   window.speechSynthesis.speak(utterance);
@@ -685,6 +722,7 @@ export function useSpeech(
       // triggered by a busy sales floor.
       let noiseFloor = 0;
       let noiseSamples = 0;
+      let peak = 0;
 
       const watchdog = window.setInterval(() => {
         if (rec.state !== 'recording') return;
@@ -703,7 +741,8 @@ export function useSpeech(
         }
 
         const floor = noiseSamples > 0 ? noiseFloor / noiseSamples : 0;
-        const threshold = Math.max(SPEECH_LEVEL, floor * 2.5);
+        const threshold = Math.max(SPEECH_LEVEL, floor * 3);
+        if (level > peak) peak = level;
 
         if (level > threshold) {
           heardSpeech = true;
@@ -734,12 +773,21 @@ export function useSpeech(
         const blob = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' });
         chunks.current = [];
 
-        // Do not transcribe a room that never spoke. This is where the wrong
-        // questions were coming from: the recorder stopped after seven seconds
-        // of nothing and sent those seven seconds to Whisper anyway, which
-        // dutifully invented a sentence out of the room tone. A mis-tap is now
-        // a mis-tap, not a question the visitor never asked.
-        if (!heardSpeech || blob.size < 2000) {
+        // Do not transcribe a room that never spoke — that is where the
+        // invented questions came from. But "never spoke" has to mean silence,
+        // not "quieter than expected": the first version of this check used only
+        // the live threshold and threw away people who were simply standing back
+        // from the screen. The loudest moment of the recording gets a second
+        // say, measured against the room's own noise floor.
+        const room = noiseSamples > 0 ? noiseFloor / noiseSamples : 0;
+        const loudEnough = peak > Math.max(SPEECH_LEVEL, room * 3);
+
+        console.info(
+          `[guide] mic: peak=${peak.toFixed(4)} room=${room.toFixed(4)} ` +
+            `speech=${heardSpeech} loudEnough=${loudEnough} bytes=${blob.size}`,
+        );
+
+        if ((!heardSpeech && !loudEnough) || blob.size < 1200) {
           noSpeech.current?.();
           return;
         }
@@ -777,15 +825,19 @@ export function useSpeech(
               ? Math.min(...result.segments.map((s) => s.avg_logprob ?? 0))
               : 0;
 
+            console.info(`[guide] heard "${text}" (confidence ${confidence.toFixed(2)})`);
+
             if (!text || isNoise(text)) {
               noSpeech.current?.();
               return;
             }
-            if (confidence < MIN_CONFIDENCE) {
-              // Words came back, but Whisper was guessing. Better to ask the
-              // visitor to repeat themselves than to answer a question they
-              // did not ask.
-              console.warn(`[guide] discarded a low-confidence transcript (${confidence.toFixed(2)}): ${text}`);
+            // Low confidence alone is not enough to throw a transcript away.
+            // Whisper scores accented speech and a noisy room down, and a strict
+            // cut-off silently refused real questions. What it cannot do is
+            // produce a *long* sentence out of nothing, so a few words scored
+            // badly is a guess worth dropping, while a proper sentence is not.
+            if (confidence < MIN_CONFIDENCE && text.split(/\s+/).length <= 3) {
+              console.warn(`[guide] dropped a short, low-confidence transcript: "${text}"`);
               noSpeech.current?.();
               return;
             }

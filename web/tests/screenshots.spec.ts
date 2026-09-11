@@ -29,11 +29,22 @@ test.describe('screens', () => {
     await page.screenshot({ path: 'test-results/screens/login-mobile.png' });
   });
 
-  test('offline panel, signed in', async ({ page }) => {
+  /**
+   * Was "offline panel, signed in". That panel no longer exists — the status
+   * pill was removed from the corner (see OfflineStatus) and the project guide
+   * took its place, so this now photographs the thing that is actually there.
+   * Skipped rather than failing in a build with no guide key configured.
+   */
+  test('the project guide, signed in', async ({ page }) => {
     await login(page);
     await page.waitForTimeout(3000);
-    await page.getByRole('button', { name: /offline status/i }).click();
-    await page.waitForTimeout(600);
-    await page.screenshot({ path: 'test-results/screens/offline-panel.png' });
+
+    const launcher = page.getByRole('button', { name: 'Ask the guide' });
+    test.skip((await launcher.count()) === 0, 'no guide key in this build');
+
+    await page.screenshot({ path: 'test-results/screens/guide-launcher.png' });
+    await launcher.click();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: 'test-results/screens/guide-panel.png' });
   });
 });

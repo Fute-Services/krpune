@@ -78,7 +78,14 @@ export default defineConfig({
           {
             // Must match MEDIA_CACHE in src/offline/offlineDownload.ts, or the
             // downloader and the worker would use two different caches.
-            urlPattern: ({ url }) => url.pathname.startsWith('/media/'),
+            // The `krc-direct` exclusion lets startOfflineDownload() fetch
+            // straight from the network — see SW_BYPASS in offlineDownload.ts.
+            // Handling those here would have the worker fetch and cache the
+            // same file the page is already fetching and caching, which is what
+            // broke the two large videos. Playback requests carry no marker and
+            // still land on this route.
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/media/') && !url.searchParams.has('krc-direct'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'krc-offline-media',

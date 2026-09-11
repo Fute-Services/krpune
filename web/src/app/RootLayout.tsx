@@ -7,6 +7,8 @@ import "react-toastify/dist/ReactToastify.css";
 import { RequireAuth } from './RequireAuth';
 import OfflineStatus from '../components/pwa/OfflineStatus';
 import InstallPrompt from '../components/pwa/InstallPrompt';
+import ChatWidget from '../components/chat/ChatWidget';
+import SignOutButton from '../components/pwa/SignOutButton';
 
 export const RootLayout = () => {
   const location = useLocation();
@@ -61,14 +63,23 @@ export const RootLayout = () => {
       </main>
       <ToastContainer />
 
-      {/* Download progress + install affordances. Rendered here, inside the
-          authenticated shell, so a logged-out visitor never sees either. */}
+      {/* Only the service-worker update bar now — the offline status pill was
+          removed from the corner; see the component. */}
       <OfflineStatus />
 
       {/* The install offer, surfaced on its own rather than buried in the
           OfflineStatus panel — that panel is behind a collapsed pill nobody
           opens, which made the app look like it could not be installed. */}
       <InstallPrompt />
+
+      {/* The spoken project guide. Inside the authenticated shell like the two
+          above: it answers with project detail, and it costs money per question,
+          so it is not offered to a logged-out visitor. */}
+      <ChatWidget />
+
+      {/* Staff-only, home screen only — the sign out that used to live in the
+          offline panel. */}
+      <SignOutButton />
 
       {/* {footer && <Footer1 />} */}
       {/* <footer className={styles.footer}>

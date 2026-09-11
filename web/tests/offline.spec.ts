@@ -51,11 +51,14 @@ test.describe('offline', () => {
     const entries = await waitForCachingToSettle(page);
     console.log(`[offline] cache settled at ${entries} entries`);
 
+    // The download has no UI any more, so this log line and the assertions below
+    // are the only thing that can catch a file that never landed.
     const progress = await page.evaluate(() => {
-      const el = document.querySelector('[aria-label="Offline status"]');
-      return el?.textContent ?? '';
+      const p = window.__krcOffline?.();
+      return p ? `${p.status} ${p.filesDone}/${p.filesTotal} failed=${p.failed.length}` : 'unavailable';
     });
-    console.log(`[offline] status pill: ${progress}`);
+    console.log(`[offline] downloader: ${progress}`);
+    expect(progress, 'the downloader reported failures').toContain('failed=0');
 
     // 111 media files + 43 precache entries. Assert a floor, not an exact
     // number — the manifest legitimately contains duplicates (rule 9).

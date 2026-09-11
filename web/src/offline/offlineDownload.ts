@@ -19,6 +19,27 @@ import { detectIos, detectStandalone } from '@/hooks/usePwaInstall';
  *  "already downloaded" check would always miss. */
 export const MEDIA_CACHE = 'krc-offline-media';
 
+/**
+ * Marker that takes the downloader's own fetches *past* the service worker.
+ * Must match the exclusion in the /media/ route in vite.config.ts.
+ *
+ * `clientsClaim: true` means the worker controls this page, so without the
+ * marker every request below is routed through the worker's CacheFirst handler
+ * — which fetches the file, streams one branch of it to us and writes the other
+ * into the very same cache we are writing to. Two consumers of one 100 MB body,
+ * two writers of one entry: the videos pulled twice over the wire and died as a
+ * bare "Failed to fetch" with nothing on the page able to explain why. The small
+ * files fit through it; the two big ones never did.
+ *
+ * Only the request carries the marker. `cache.put()` below is given the clean
+ * URL as its key, which is what <video> and <img> ask for on playback.
+ */
+const SW_BYPASS = 'krc-direct';
+
+function directUrl(url: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}${SW_BYPASS}=1`;
+}
+
 export type OfflineStatus =
   | 'idle'
   /** iOS, in a Safari tab. See awaitingInstallProblem(). */
@@ -59,6 +80,22 @@ const listeners = new Set<(p: OfflineProgress) => void>();
 export function getOfflineProgress(): OfflineProgress {
   return progress;
 }
+
+/**
+ * The download has no visitor-facing UI any more — the status pill was removed
+ * from the corner because a kiosk should not show a sales visitor a warning
+ * about its own cache. The progress is still real and still matters, so it is
+ * published here for the offline test suite, which used to read the pill's text
+ * to know when the library had finished landing. Without this the suite falls
+ * back to "the cache entry count stopped growing", which mistakes a 100 MB
+ * video being written for a finished download.
+ */
+declare global {
+  interface Window {
+    __krcOffline?: () => OfflineProgress;
+  }
+}
+if (typeof window !== 'undefined') window.__krcOffline = getOfflineProgress;
 
 export function onOfflineProgress(listener: (p: OfflineProgress) => void): () => void {
   listeners.add(listener);
@@ -199,8 +236,13 @@ function sizeProblem(response: Response, expectedBytes: number): string | null {
  * never held in memory. That costs byte-level progress within a single file,
  * which is why progress is credited per file instead.
  */
-async function downloadInto(cache: Cache, url: string, expectedBytes: number): Promise<void> {
-  const response = await fetch(url, { cache: 'no-store' });
+async function downloadInto(
+  cache: Cache,
+  url: string,
+  expectedBytes: number,
+  buffered: boolean,
+): Promise<void> {
+  const response = await fetch(directUrl(url), { cache: 'no-store' });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
 
   const problem = sizeProblem(response, expectedBytes);
@@ -216,7 +258,34 @@ async function downloadInto(cache: Cache, url: string, expectedBytes: number): P
     throw new Error(`${url}: ${problem}${detail}`);
   }
 
-  await cache.put(url, response);
+  if (!buffered) {
+    await cache.put(url, response);
+    return;
+  }
+
+  // Retry path for the two large videos. Streaming straight into `cache.put`
+  // hands the still-open connection to the cache, so any stall or drop while
+  // those 100 MB / 64 MB bodies are in flight surfaces as the useless
+  // "Cache.put() encountered a network error" — the body is gone by then and
+  // there is nothing left to retry from. Reading the body to a Blob first means
+  // a broken transfer fails as a plain fetch error (retryable), and only a body
+  // we already hold in full is ever written. Costs memory, so it is the
+  // fallback rather than the default.
+  const blob = await response.blob();
+  if (expectedBytes > 0 && blob.size < expectedBytes * 0.5) {
+    throw new Error(`${url}: truncated transfer — expected ~${expectedBytes} bytes, got ${blob.size}`);
+  }
+  await cache.put(
+    url,
+    new Response(blob, {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': response.headers.get('content-type') ?? 'application/octet-stream',
+        'Content-Length': String(blob.size),
+      },
+    }),
+  );
 }
 
 /**
@@ -295,19 +364,20 @@ export async function startOfflineDownload(): Promise<OfflineProgress> {
     }
     update({ filesDone, bytesDone });
 
-    // Modest concurrency: enough to keep the pipe full, low enough that a
-    // tablet on hotel WiFi does not time out four 100 MB videos at once.
-    const CONCURRENCY = 3;
-    const queue = [...pending];
+    // Anything past this is a video, and two of those in flight next to a third
+    // download is what starves them into a mid-stream abort.
+    const LARGE_BYTES = 25 * 1024 * 1024;
 
-    async function worker(): Promise<void> {
+    async function worker(queue: typeof files): Promise<void> {
       for (;;) {
         const file = queue.shift();
         if (!file) return;
         let lastError: unknown = null;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            await downloadInto(cache, file.url, file.bytes);
+            // First attempt streams (no memory cost). If that dies inside
+            // cache.put, retry with the body buffered — see downloadInto().
+            await downloadInto(cache, file.url, file.bytes, attempt > 0);
             // Credited from the manifest, not from the wire, so the bar lands
             // exactly on 100 % regardless of transfer encoding.
             filesDone += 1;
@@ -317,7 +387,10 @@ export async function startOfflineDownload(): Promise<OfflineProgress> {
             break;
           } catch (error) {
             lastError = error;
-            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+            // A half-written entry would otherwise be counted as done by the
+            // next run's alreadyCached() check if it happens to be big enough.
+            await cache.delete(file.url, { ignoreVary: true }).catch(() => {});
+            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
           }
         }
         if (lastError) {
@@ -326,13 +399,27 @@ export async function startOfflineDownload(): Promise<OfflineProgress> {
           // actionable on its own — the whole point of the size check is that
           // it can say *why*, and "expected ~104892919 bytes, got 134" is a
           // server-side problem no amount of retrying will fix.
-          if (!firstError) firstError = String((lastError as Error)?.message ?? lastError);
+          // Named, because the bare browser text is not. "Failed to fetch" sends
+          // an operator hunting through the whole library; "walkthrough.mp4:
+          // Failed to fetch" says which 100 MB file the connection gave up on.
+          if (!firstError) {
+            const reason = String((lastError as Error)?.message ?? lastError);
+            const name = file.url.split('/').pop() ?? file.url;
+            firstError = reason.includes(name) ? reason : `${name}: ${reason}`;
+          }
           update({ failed: [...failed] });
         }
       }
     }
 
-    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    // Small files three at a time — enough to keep the pipe full, low enough
+    // that a tablet on hotel WiFi copes. The videos then go one at a time, with
+    // the whole connection to themselves.
+    const small = pending.filter((f) => f.bytes < LARGE_BYTES);
+    const large = pending.filter((f) => f.bytes >= LARGE_BYTES);
+
+    await Promise.all(Array.from({ length: 3 }, () => worker(small)));
+    await worker(large);
 
     update({
       status: failed.length ? 'error' : 'complete',

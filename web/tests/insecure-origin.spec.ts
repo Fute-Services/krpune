@@ -92,8 +92,9 @@ test('a plain-http LAN origin cannot cache, and says so', async ({ page }) => {
     });
     expect(registrations, 'a worker registered on an insecure origin').toBe(0);
 
-    // And the user is told, rather than left with a silently useless install.
-    await page.getByRole('button', { name: /offline status/i }).click();
+    // And it is said out loud, rather than left as a silently useless install.
+    // No click: the status pill this used to open was removed from the corner,
+    // so the warning is a bar that shows itself — see OfflineStatus.
     await expect(page.getByText(/service workers need https/i)).toBeVisible();
   } finally {
     server.close();

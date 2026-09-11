@@ -109,9 +109,13 @@ export async function assertReallyOffline(page: Page): Promise<void> {
  * Rule 31: cutting the network mid-download caches a partial set and the next
  * assertion fails for the wrong reason.
  *
- * Prefer the downloader's own "Available offline"; fall back to polling the
- * cache entry count until it stops growing, for the callers and states where
- * that pill never appears (a failed file leaves it on "Offline · incomplete").
+ * Prefer the downloader's own verdict, read from window.__krcOffline(); fall
+ * back to polling the cache entry count until it stops growing, for the states
+ * that never reach 'complete' (a failed file leaves it on 'error').
+ *
+ * That verdict used to be read out of the corner status pill's text. The pill
+ * was removed from the UI — see OfflineStatus — so the downloader publishes its
+ * progress on window instead, and this is the only thing watching it now.
  */
 export async function waitForCachingToSettle(
   page: Page,
@@ -129,17 +133,16 @@ export async function waitForCachingToSettle(
         for (const name of names) total += (await (await caches.open(name)).keys()).length;
       }
       // The app's own verdict, which beats any heuristic about entry counts.
-      const pill = document.querySelector('[aria-label="Offline status"]');
-      return { count: total, status: pill?.textContent?.trim() ?? null };
+      return { count: total, status: window.__krcOffline?.().status ?? null };
     });
 
     // Ask the downloader rather than guessing. The quiet-period fallback below
     // measures "the entry count stopped growing", and writing a 100 MB video on
     // a loaded machine looks exactly like that — so on a slow run it returned
     // mid-download and the next test failed on an image that simply had not
-    // been fetched yet. "Available offline" is the downloader saying every file
-    // in the manifest is in the cache.
-    if (status === 'Available offline') return count;
+    // been fetched yet. 'complete' is the downloader saying every file in the
+    // manifest is in the cache.
+    if (status === 'complete') return count;
 
     if (count !== last) {
       last = count;
@@ -177,21 +180,34 @@ export async function serviceWorkerCount(page: Page): Promise<number> {
  * produces an element; only naturalWidth proves bytes were decoded.
  */
 export async function assertImagesDecoded(page: Page, label: string): Promise<number> {
-  const result = await page.evaluate(() => {
-    const imgs = [...document.querySelectorAll('img')].filter((img) => {
-      const r = img.getBoundingClientRect();
-      const style = getComputedStyle(img);
-      return r.width > 2 && r.height > 2 && style.visibility !== 'hidden' && style.display !== 'none';
+  const read = () =>
+    page.evaluate(() => {
+      const imgs = [...document.querySelectorAll('img')].filter((img) => {
+        const r = img.getBoundingClientRect();
+        const style = getComputedStyle(img);
+        return (
+          r.width > 2 && r.height > 2 && style.visibility !== 'hidden' && style.display !== 'none'
+        );
+      });
+      return {
+        total: imgs.length,
+        broken: imgs.filter((i) => i.naturalWidth === 0).map((i) => i.currentSrc || i.src),
+      };
     });
-    return {
-      total: imgs.length,
-      broken: imgs.filter((i) => i.naturalWidth === 0).map((i) => i.currentSrc || i.src),
-    };
-  });
-  expect(result.broken, `${label}: image(s) failed to decode: ${result.broken.join(', ')}`).toEqual(
-    [],
-  );
-  return result.total;
+
+  // Polled, not sampled once. A single read asserts "every image had decoded by
+  // the instant I looked", which is not the claim — a 2 MB JPEG served from the
+  // cache still takes a moment to decode, and this reported it as a broken image
+  // in a run where the file was provably cached whole. Waiting distinguishes
+  // "slow" from "missing"; a genuinely absent file never decodes at all.
+  await expect
+    .poll(async () => (await read()).broken, {
+      message: `${label}: image(s) never decoded`,
+      timeout: 20_000,
+    })
+    .toEqual([]);
+
+  return (await read()).total;
 }
 
 /**

@@ -19,7 +19,7 @@ import { ArrowUp, Mic, Route, Volume2, VolumeX, X } from 'lucide-react';
 import { ask, explainError, hasApiKey, type ChatMessage } from '@/chatbot/chatClient';
 import { pageFor, PROJECT_NAME } from '@/chatbot/knowledge';
 import { useSpeech } from '@/chatbot/useSpeech';
-import { DWELL_AFTER_SPEECH_MS, DWELL_WHEN_MUTED_MS, TOUR } from '@/chatbot/tour';
+import { DWELL_AFTER_SPEECH_MS, minimumStopMs, TOUR, tourMinutes } from '@/chatbot/tour';
 import { VoiceOrb, Waveform } from './VoiceVisuals';
 
 /** Kept short — the brief goes up every turn and the account has a token cap. */
@@ -148,10 +148,19 @@ export default function ChatWidget() {
     navigate(stop.path);
     setMessages((prev) => [...prev, { role: 'assistant', content: stop.line }]);
 
+    const startedAt = Date.now();
+    const floor = minimumStopMs(stop.line);
+
+    // Wait for the line to be spoken, then a beat — but never leave a screen
+    // sooner than the line takes to say. `advance` can fire immediately when
+    // muted, when the voice fails, or on a device with no audio at all, and
+    // without the floor the whole tour would flick past in a minute.
     const advance = (): void => {
+      const elapsed = Date.now() - startedAt;
+      const wait = Math.max(DWELL_AFTER_SPEECH_MS, floor - elapsed);
       tourTimer.current = window.setTimeout(
         () => setTourStop((current) => (current === null ? null : current + 1)),
-        muted ? DWELL_WHEN_MUTED_MS : DWELL_AFTER_SPEECH_MS,
+        wait,
       );
     };
 
@@ -360,7 +369,7 @@ export default function ChatWidget() {
                         Take me on the tour
                       </span>
                       <span className="block text-[10px] text-white/55 leading-tight">
-                        {TOUR.length} screens, narrated — stop any time
+                        {TOUR.length} screens, about {tourMinutes()} minutes — stop any time
                       </span>
                     </span>
                   </motion.button>

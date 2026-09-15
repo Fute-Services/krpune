@@ -17,7 +17,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUp, Mic, Route, Volume2, VolumeX, X } from 'lucide-react';
 import { ask, explainError, hasApiKey, type ChatMessage } from '@/chatbot/chatClient';
+import { matchFaq } from '@/chatbot/faq';
+import faqAudio from '@/chatbot/faqAudio.json';
 import { pageFor, PROJECT_NAME } from '@/chatbot/knowledge';
+import { nextSpeakable } from '@/chatbot/speechChunks';
 import { useSpeech } from '@/chatbot/useSpeech';
 import { DWELL_AFTER_SPEECH_MS, minimumStopMs, TOUR, tourMinutes } from '@/chatbot/tour';
 import tourAudio from '@/chatbot/tourAudio.json';
@@ -30,6 +33,19 @@ import { VoiceOrb, Waveform } from './VoiceVisuals';
  * three exchanges, which is as much as anyone refers back to.
  */
 const MAX_HISTORY = 6;
+
+/**
+ * When the conversation is cleared for the next visitor.
+ *
+ * This is a shared screen: without a reset, whoever walks up next opens the
+ * panel onto a stranger's questions, and the model answers them in the context
+ * of that stranger's conversation. Closed, the panel waits a minute after the
+ * last thing that happened in it. Open, it waits two, and any touch anywhere in
+ * the app counts — someone reading a floor plan with the panel open has not
+ * left.
+ */
+const IDLE_CLOSED_MS = 60_000;
+const IDLE_OPEN_MS = 120_000;
 
 /** The app's glass, lifted from Sidebar so the two cannot drift apart. */
 const GLASS = {
@@ -73,6 +89,14 @@ export default function ChatWidget() {
   const [tourStop, setTourStop] = useState<number | null>(null);
   const tourTimer = useRef(0);
 
+  /** Last time anything happened in the guide itself. */
+  const lastChat = useRef(Date.now());
+  /** Last touch or key press anywhere in the app. */
+  const lastTouch = useRef(Date.now());
+  const markChatActivity = useCallback(() => {
+    lastChat.current = Date.now();
+  }, []);
+
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const scroller = useRef<HTMLDivElement>(null);
@@ -85,7 +109,19 @@ export default function ChatWidget() {
   const send = useCallback(
     async (question: string) => {
       const text = question.trim();
-      if (!text || streaming) return;
+      if (!text) return;
+      markChatActivity();
+
+      // A new question while the last is still being answered — most often the
+      // visitor talking over the guide. They have moved on, so the guide does
+      // too. This used to be a silent `return`, which threw away exactly the
+      // question someone had interrupted to ask.
+      if (inFlight.current) {
+        inFlight.current.abort();
+        inFlight.current = null;
+        setPartial('');
+        setStreaming(false);
+      }
 
       // A question during the tour ends the tour. The visitor has taken over.
       // (stopSpeaking settles the line in flight, which fires the tour's
@@ -95,52 +131,108 @@ export default function ChatWidget() {
       speech.stopSpeaking();
 
       setDraft('');
+      // Errors were for the visitor, not the model — resending "the assistant
+      // failed" as something it said derails the next answer.
+      const history = messages.filter((m) => !m.failed).slice(-MAX_HISTORY);
       setMessages((prev) => [...prev, { role: 'user', content: text }]);
+
+      let turnFailed = false;
+      // Listening again the instant the answer ends is what makes this feel
+      // like talking to something rather than operating it.
+      const afterSpeaking = (): void => {
+        markChatActivity();
+        if (conversing.current && !turnFailed) speech.startListening();
+      };
+
+      // ── The questions everyone asks: answered on the spot ─────────────────
+      const prepared = matchFaq(text, history);
+      if (prepared) {
+        console.info(`[guide] prepared answer: ${prepared.id} (${prepared.language})`);
+        setMessages((prev) => [...prev, { role: 'assistant', content: prepared.answer }]);
+        if (muted) {
+          afterSpeaking();
+        } else {
+          const clip = (faqAudio as Record<string, string>)[`${prepared.id}:${prepared.language}`];
+          if (clip) speech.speakClip(clip, prepared.answer, afterSpeaking);
+          else speech.speak(prepared.answer, afterSpeaking, { bargeIn: conversing.current });
+        }
+        return;
+      }
+
+      // ── Everything else: the model, spoken as it is written ───────────────
       setPartial('');
       setStreaming(true);
 
       const controller = new AbortController();
       inFlight.current = controller;
 
+      const voice = muted ? null : speech.beginSpeech(afterSpeaking, { bargeIn: conversing.current });
+      let spokenTo = 0;
+      let spoken = '';
+      /** False once the text on screen stops extending what was already said. */
+      let inStep = true;
+      const feed = (soFar: string, final: boolean): void => {
+        if (!voice || !inStep) return;
+        // scrubMeta can take text back out of the reply. If it removes something
+        // that was already spoken there is no unsaying it, so the voice simply
+        // stops following along rather than speaking a spliced sentence.
+        if (!soFar.startsWith(spoken)) {
+          inStep = false;
+          return;
+        }
+        const { chunks, to } = nextSpeakable(soFar, spokenTo, final);
+        chunks.forEach((chunk) => voice.push(chunk));
+        spokenTo = to;
+        spoken = soFar.slice(0, to);
+      };
+
       try {
         const reply = await ask({
-          // Errors were for the visitor, not the model — resending "the
-          // assistant failed" as something it said derails the next answer.
-          history: messages.filter((m) => !m.failed).slice(-MAX_HISTORY),
+          history,
           question: text,
           pathname: here.current,
           // The whole reply so far, already cleaned — see scrubMeta.
-          onText: setPartial,
+          onText: (soFar) => {
+            setPartial(soFar);
+            feed(soFar, false);
+          },
           onNavigate: (path) => navigate(path),
-          onStartTour: () => setTourStop(0),
+          onStartTour: () => {
+            // The tour narrates itself; a microphone reopening under it would
+            // hear the narration and take it for a question.
+            conversing.current = false;
+            setTourStop(0);
+          },
           signal: controller.signal,
         });
         setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        if (!muted) {
-          // Listening again the instant the answer ends is what makes this feel
-          // like talking to something rather than operating it.
-          speech.speak(reply, () => {
-            if (conversing.current) speech.startListening();
-          });
+        if (voice) {
+          feed(reply, true);
+          voice.end();
         } else if (conversing.current) {
           speech.startListening();
         }
       } catch (error) {
         if (controller.signal.aborted) return;
+        turnFailed = true;
         const explanation = explainError(error);
         setMessages((prev) => [...prev, { role: 'assistant', content: explanation, failed: true }]);
         // Someone talking hands-free is not looking at the panel; a failure
         // that is only written down is a guide that went silent on them.
         if (!muted) speech.speak(explanation);
       } finally {
-        setPartial('');
-        setStreaming(false);
-        inFlight.current = null;
+        // Only the turn that is still current may clear the in-flight state; a
+        // turn that was superseded would otherwise wipe out its replacement's.
+        if (inFlight.current === controller) {
+          setPartial('');
+          setStreaming(false);
+          inFlight.current = null;
+        }
       }
     },
     // `speech` is created below and is stable for the life of the component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, muted, navigate, streaming],
+    [messages, muted, navigate, markChatActivity],
   );
 
   const speech = useSpeech(
@@ -232,7 +324,58 @@ export default function ChatWidget() {
     speech.stopSpeaking();
     speech.stopListening();
     inFlight.current?.abort();
-  }, [speech]);
+    markChatActivity();
+  }, [speech, markChatActivity]);
+
+  /** Everything back to how the next visitor should find it. */
+  const resetSession = useCallback(() => {
+    console.info('[guide] idle — clearing the conversation for the next visitor');
+    close();
+    setMessages([]);
+    setDraft('');
+    setPartial('');
+    setStreaming(false);
+    setMissedIt(false);
+    setMuted(false);
+  }, [close]);
+  const resetRef = useRef(resetSession);
+  resetRef.current = resetSession;
+
+  const busy = speech.listening || speech.transcribing || streaming || speech.speaking;
+
+  // Read by the idle check below, which is set up once and must see now, not
+  // the render it was created in.
+  const idleState = useRef({ open, busy, touring: false, hasConversation: false });
+  idleState.current = { open, busy, touring: tourStop !== null, hasConversation: messages.length > 0 };
+
+  useEffect(() => {
+    const touched = (): void => {
+      lastTouch.current = Date.now();
+    };
+    window.addEventListener('pointerdown', touched, { passive: true });
+    window.addEventListener('keydown', touched);
+
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      const state = idleState.current;
+      // Talking, listening, thinking or touring is never idle, however long.
+      if (state.busy || state.touring) {
+        lastChat.current = now;
+        return;
+      }
+      if (!state.open && !state.hasConversation) return;
+      const idleFor = state.open
+        ? now - Math.max(lastChat.current, lastTouch.current)
+        : now - lastChat.current;
+      if (idleFor >= (state.open ? IDLE_OPEN_MS : IDLE_CLOSED_MS)) resetRef.current();
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('pointerdown', touched);
+      window.removeEventListener('keydown', touched);
+      window.clearInterval(timer);
+    };
+  }, []);
 
   // Nothing to offer without a key, and a chat box that answers every question
   // with a configuration error is worse than no chat box.
@@ -243,19 +386,20 @@ export default function ChatWidget() {
     ? ['What am I looking at?', `More about ${current.title}`, 'Amenities dikhao']
     : ['What is this project?', 'Show me the amenities', 'Location kaisi hai?'];
 
+  // Speaking before thinking: the reply now starts playing while the model is
+  // still writing it, and "Thinking…" over a voice that is already talking is
+  // wrong.
   const status = tourStop !== null
     ? `Tour — ${pageFor(TOUR[tourStop]?.path ?? '')?.title ?? 'on the way'}`
     : speech.listening
     ? 'Listening…'
     : speech.transcribing
       ? 'One moment…'
-      : streaming
-        ? 'Thinking…'
-        : speech.speaking
-          ? 'Speaking…'
+      : speech.speaking
+        ? 'Speaking…'
+        : streaming
+          ? 'Thinking…'
           : PROJECT_NAME;
-
-  const busy = speech.listening || speech.transcribing || streaming || speech.speaking;
 
   return (
     <>
@@ -269,7 +413,10 @@ export default function ChatWidget() {
             whileHover={{ y: -2, scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              markChatActivity();
+              setOpen(true);
+            }}
             aria-label="Ask the guide"
             className="group fixed bottom-6 right-6 z-[1900] flex items-center gap-3 h-[3.75rem] pl-2 pr-2 rounded-full overflow-hidden text-left"
             style={{
@@ -323,6 +470,7 @@ export default function ChatWidget() {
             transition={{ type: 'spring', stiffness: 300, damping: 28 }}
             role="dialog"
             aria-label="Project guide"
+            onPointerDown={markChatActivity}
             className="
               fixed bottom-6 right-6 z-[1900]
               w-[min(24rem,calc(100vw-3rem))] max-h-[min(34rem,calc(100vh-4rem))]
@@ -434,7 +582,10 @@ export default function ChatWidget() {
                   <motion.button
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
-                    onClick={() => setTourStop(0)}
+                    onClick={() => {
+                      conversing.current = false;
+                      setTourStop(0);
+                    }}
                     className="flex items-center gap-2 w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:brightness-110"
                     style={{
                       background: 'linear-gradient(135deg, rgba(28,108,188,0.55), rgba(59,130,246,0.35))',
@@ -611,12 +762,18 @@ export default function ChatWidget() {
                       <button
                         type="button"
                         onClick={() => {
+                          // Also the way to interrupt: startListening stops the
+                          // voice first, on every device — including the iPads,
+                          // where talking over the guide is not listened for.
                           conversing.current = true;
+                          markChatActivity();
                           speech.startListening();
                         }}
                         disabled={speech.transcribing}
                         aria-label="Speak"
-                        className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:text-white transition-all disabled:opacity-40"
+                        className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:text-white transition-all disabled:opacity-40 ${
+                          speech.speaking ? 'ring-1 ring-[#90C7FF]/70 text-white' : ''
+                        }`}
                         style={{ background: 'rgba(255,255,255,0.10)' }}
                       >
                         <Mic size={14} />
@@ -630,9 +787,16 @@ export default function ChatWidget() {
                         // conversation; nobody wants the microphone opening
                         // itself while they are typing.
                         conversing.current = false;
+                        markChatActivity();
                         setDraft(e.target.value);
                       }}
-                      placeholder={speech.transcribing ? 'One moment…' : 'Ask about this screen…'}
+                      placeholder={
+                        speech.transcribing
+                          ? 'One moment…'
+                          : speech.speaking && speech.canListen
+                            ? 'Tap the mic to interrupt…'
+                            : 'Ask about this screen…'
+                      }
                       aria-label="Your question"
                       className="flex-1 min-w-0 bg-transparent text-[12.5px] text-white placeholder:text-white/35 outline-none"
                     />

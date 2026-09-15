@@ -1,0 +1,47 @@
+{
+  "airport": {
+    "english": "Pune Airport is 17 kilometres away, about 40 minutes by road. Would you like to see the connectivity details on the Project Info screen?",
+    "hinglish": "Pune Airport yahan se 17 kilometre door hai, lagbhag 40 minute ki drive. Project Info screen par connectivity details dekhna chahenge?",
+    "devanagari": "पुणे एयरपोर्ट यहाँ से 17 किलोमीटर दूर है, लगभग 40 मिनट की ड्राइव। क्या आप प्रोजेक्ट इन्फो स्क्रीन पर कनेक्टिविटी की जानकारी देखना चाहेंगे?"
+  },
+  "station": {
+    "english": "Pune Railway Station is 11 kilometres away, about 30 minutes by road.",
+    "hinglish": "Pune Railway Station yahan se 11 kilometre door hai, lagbhag 30 minute ki drive.",
+    "devanagari": "पुणे रेलवे स्टेशन यहाँ से 11 किलोमीटर दूर है, लगभग 30 मिनट की ड्राइव।"
+  },
+  "size": {
+    "english": "The campus is spread across about 9 acres, with roughly 2.7 million square feet of leasable area. Would you like to see the area floor by floor?",
+    "hinglish": "Campus lagbhag 9 acre mein faila hai, aur isme kareeb 2.7 million square feet leasable area hai. Floor-wise area dekhna chahenge?",
+    "devanagari": "कैंपस लगभग 9 एकड़ में फैला है, और इसमें करीब 2.7 मिलियन स्क्वेयर फीट लीज़ेबल एरिया है। क्या आप हर फ्लोर का एरिया देखना चाहेंगे?"
+  },
+  "parking": {
+    "english": "There are 8 levels of parking, from Lower Ground up to the 6th parking podium, and that top podium is mainly mechanical parking.",
+    "hinglish": "Parking ke 8 level hain, Lower Ground se 6th parking podium tak, aur sabse upar wala podium zyadatar mechanical parking hai.",
+    "devanagari": "पार्किंग के 8 लेवल हैं, लोअर ग्राउंड से छठे पार्किंग पोडियम तक, और सबसे ऊपर वाला पोडियम ज़्यादातर मैकेनिकल पार्किंग है।"
+  },
+  "leed": {
+    "english": "Yes, the project is LEED Gold certified for Core and Shell. Would you like to see its green building features?",
+    "hinglish": "Haan, project Core and Shell ke liye LEED Gold certified hai. Iske green building features dekhna chahenge?",
+    "devanagari": "हाँ, यह प्रोजेक्ट कोर एंड शेल के लिए LEED गोल्ड सर्टिफाइड है। क्या आप इसके ग्रीन बिल्डिंग फीचर्स देखना चाहेंगे?"
+  },
+  "towers": {
+    "english": "There are two towers, T1 and T2, with offices from the 1st to the 17th floor in both.",
+    "hinglish": "Yahan do tower hain, T1 aur T2, aur dono mein 1st se 17th floor tak offices hain.",
+    "devanagari": "यहाँ दो टावर हैं, T1 और T2, और दोनों में पहली से सत्रहवीं मंज़िल तक ऑफ़िस हैं।"
+  },
+  "foodcourt": {
+    "english": "The food court on the podium is 40,000 square feet, and it opens onto a large landscaped garden that is open to the sky. There is a second food court up on the terrace.",
+    "hinglish": "Podium par 40,000 square feet ka food court hai, jo ek bade landscaped, open-to-sky garden par khulta hai. Terrace par ek aur food court bhi hai.",
+    "devanagari": "पोडियम पर 40,000 स्क्वेयर फीट का फूड कोर्ट है, जो एक बड़े खुले लैंडस्केप्ड गार्डन पर खुलता है। टैरेस पर एक और फूड कोर्ट भी है।"
+  },
+  "developer": {
+    "english": "Commerzone Baner is developed by K Raheja Corp. Would you like to see the corporate profile?",
+    "hinglish": "Commerzone Baner ko K Raheja Corp ne develop kiya hai. Corporate profile dekhna chahenge?",
+    "devanagari": "कॉमर्ज़ोन बानेर को के रहेजा कॉर्प ने डेवलप किया है। क्या आप कॉर्पोरेट प्रोफ़ाइल देखना चाहेंगे?"
+  },
+  "where": {
+    "english": "It is in Baner, West Pune, on one of Pune's fastest-growing IT and automobile corridors, with direct access from a service road off the Mumbai-Pune Highway.",
+    "hinglish": "Yeh project Baner, West Pune mein hai, Pune ke sabse tezi se badhte IT aur automobile corridor par, aur Mumbai-Pune Highway ki service road se seedha access hai.",
+    "devanagari": "यह प्रोजेक्ट बानेर, पश्चिम पुणे में है, पुणे के सबसे तेज़ी से बढ़ते IT और ऑटोमोबाइल कॉरिडोर पर, और मुंबई-पुणे हाईवे की सर्विस रोड से सीधा एक्सेस है।"
+  }
+}

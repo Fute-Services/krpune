@@ -1,20 +1,24 @@
 /**
- * Renders the guided tour's narration to audio files, once, ahead of time.
+ * Renders the guide's fixed lines to audio files, once, ahead of time: the
+ * guided tour's narration, and the prepared answers to the questions every
+ * visitor asks (src/chatbot/faqAnswers.json).
  *
  * This exists because the tour was buying its own voice again on every single
  * run. The narration is nineteen fixed lines, about 6,000 characters; an
  * ElevenLabs free tier is 10,000 credits and the flash model spends half a
  * credit a character, so roughly three runs of the tour emptied the account and
  * the kiosk quietly dropped to the robotic browser voice. Paying for the same
- * unchanging sentences over and over was the actual bug.
+ * unchanging sentences over and over was the actual bug. The prepared answers
+ * are the same situation: "airport kitna door hai?" is asked all day.
  *
  * Rendered once, the clips are static files: they cost nothing to play, they
- * work with the network off like the rest of this app, and the tour keeps the
+ * work with the network off like the rest of this app, and the guide keeps the
  * good voice whatever the account balance is afterwards.
  *
  * Usage:
- *   npm run tour:audio              # render anything missing
+ *   npm run tour:audio              # render anything missing, tour and answers
  *   npm run tour:audio -- --force   # re-render everything (after editing lines)
+ *   npm run faq:audio               # only the prepared answers
  *
  * Needs VITE_ELEVENLABS_API_KEY (preferred) or VITE_GROQ_API_KEY in web/.env.
  * Existing files are left alone, so a run that dies halfway can be repeated
@@ -25,8 +29,6 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = join(root, 'public', 'media', 'tour');
-const indexFile = join(root, 'src', 'chatbot', 'tourAudio.json');
 
 const ELEVEN_MODEL = 'eleven_flash_v2_5';
 const ELEVEN_VOICE = 'EXAVITQu4vr4xnSDxMaL'; // Sarah
@@ -35,6 +37,8 @@ const GROQ_VOICE = 'Autumn';
 const GROQ_LIMIT = 200;
 
 const force = process.argv.includes('--force');
+const faqOnly = process.argv.includes('--faq-only');
+const tourOnly = process.argv.includes('--tour-only');
 
 function env(name) {
   const line = existsSync(join(root, '.env'))
@@ -59,6 +63,14 @@ function readTour() {
     stops.push({ path: m[1], line: m[3].replace(/\\u([0-9a-f]{4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))) });
   }
   return stops;
+}
+
+/** The prepared answers — the same file the app answers from. */
+function readAnswers() {
+  const answers = JSON.parse(readFileSync(join(root, 'src', 'chatbot', 'faqAnswers.json'), 'utf8'));
+  return Object.entries(answers).flatMap(([id, byLanguage]) =>
+    Object.entries(byLanguage).map(([language, line]) => ({ id, language, line })),
+  );
 }
 
 async function viaElevenLabs(key, text) {
@@ -112,12 +124,6 @@ async function viaGroq(key, text) {
   return { buffer: joinWavs(clips), ext: 'wav' };
 }
 
-const stops = readTour();
-if (stops.length === 0) {
-  console.error('Could not read any tour stops out of src/chatbot/tour.ts — has its shape changed?');
-  process.exit(1);
-}
-
 const eleven = env('VITE_ELEVENLABS_API_KEY');
 const groq = env('VITE_GROQ_API_KEY');
 if (!eleven && !groq) {
@@ -125,69 +131,125 @@ if (!eleven && !groq) {
   process.exit(1);
 }
 
-mkdirSync(outDir, { recursive: true });
-
-const characters = stops.reduce((n, s) => n + s.line.length, 0);
-console.log(`${stops.length} stops, ${characters} characters.`);
-console.log(`ElevenLabs spends about ${Math.round(characters / 2)} credits on this; it is a one-off.\n`);
-
-const index = {};
-let rendered = 0;
+/** Shared across both sets: a provider that failed once is not asked again. */
 let failure = null;
 
-for (const [i, stop] of stops.entries()) {
-  const number = String(i + 1).padStart(2, '0');
-  const existing = ['mp3', 'wav'].find((ext) => existsSync(join(outDir, `stop-${number}.${ext}`)));
+/**
+ * Renders one set of lines. `items` carry `key` (the index entry the app looks
+ * up), `name` (the file name, without extension) and `line`.
+ */
+async function renderSet({ label, items, dir, indexFile, publicPrefix }) {
+  const outDir = join(root, 'public', 'media', dir);
+  mkdirSync(outDir, { recursive: true });
 
-  if (existing && !force) {
-    index[stop.path] = `/media/tour/stop-${number}.${existing}`;
-    console.log(`  ${number} ${stop.path} — already rendered`);
-    continue;
-  }
+  const characters = items.reduce((n, item) => n + item.line.length, 0);
+  console.log(`\n${label}: ${items.length} lines, ${characters} characters.`);
+  console.log(`ElevenLabs spends about ${Math.round(characters / 2)} credits on these; it is a one-off.`);
 
-  try {
-    const { buffer, ext } =
-      eleven && !failure?.eleven
-        ? await viaElevenLabs(eleven, stop.line).catch((error) => {
-            failure = { ...failure, eleven: error };
-            if (!groq) throw error;
-            console.log(`     ElevenLabs unavailable (${error.message.slice(0, 60)}) — trying Groq`);
-            return viaGroq(groq, stop.line);
-          })
-        : await viaGroq(groq, stop.line);
+  const index = {};
+  let rendered = 0;
+  let stopped = false;
 
-    writeFileSync(join(outDir, `stop-${number}.${ext}`), buffer);
-    index[stop.path] = `/media/tour/stop-${number}.${ext}`;
-    rendered += 1;
-    console.log(`  ${number} ${stop.path} — ${(buffer.length / 1024).toFixed(0)} KB`);
-  } catch (error) {
-    console.error(`  ${number} ${stop.path} — FAILED: ${error.message}`);
-    // A rejected key, an empty quota or unaccepted model terms will say exactly
-    // the same thing eighteen more times. Stop and say what to do about it once.
-    if (/terms|quota|401|403|429/i.test(error.message)) {
-      console.error('\nNothing can be rendered until the voice account is usable. One of:');
-      console.error('  • ElevenLabs — top up or wait for the monthly reset, then run this again.');
-      console.error('    This tour needs about ' + Math.round(characters / 2) + ' credits, once.');
-      console.error('  • Groq — accept the model terms once, then run this again:');
-      console.error('    https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english');
-      console.error('\nThe tour still runs meanwhile; it speaks each line live instead.');
-      break;
+  for (const item of items) {
+    const existing = ['mp3', 'wav'].find((ext) => existsSync(join(outDir, `${item.name}.${ext}`)));
+    if (existing && !force) {
+      index[item.key] = `${publicPrefix}/${item.name}.${existing}`;
+      console.log(`  ${item.name} — already rendered`);
+      continue;
+    }
+    if (stopped) continue;
+
+    // Orpheus is English-only; a Devanagari line read by it would be gibberish.
+    // Without ElevenLabs such a line is simply spoken live by the app instead.
+    const groqCanReadIt = !/[ऀ-ॿ]/.test(item.line);
+
+    // Groq, unless it has already refused: unaccepted terms or a bad key say
+    // the same thing for every line, and asking again just prints it again.
+    const tryGroq = (error) => {
+      if (!groq || !groqCanReadIt || failure?.groq) throw error;
+      return viaGroq(groq, item.line).catch((groqError) => {
+        failure = { ...failure, groq: groqError };
+        throw groqError;
+      });
+    };
+
+    try {
+      let result;
+      if (eleven && !failure?.eleven) {
+        result = await viaElevenLabs(eleven, item.line).catch((error) => {
+          failure = { ...failure, eleven: error };
+          console.log(`     ElevenLabs unavailable (${error.message.slice(0, 120)})`);
+          return tryGroq(error);
+        });
+      } else if (groq && groqCanReadIt && !failure?.groq) {
+        result = await tryGroq(new Error('no ElevenLabs'));
+      } else {
+        const why = groqCanReadIt ? 'no voice account is usable' : 'Devanagari needs ElevenLabs';
+        console.log(`  ${item.name} — skipped: ${why}; the app will speak it live`);
+        continue;
+      }
+
+      writeFileSync(join(outDir, `${item.name}.${result.ext}`), result.buffer);
+      index[item.key] = `${publicPrefix}/${item.name}.${result.ext}`;
+      rendered += 1;
+      console.log(`  ${item.name} — ${(result.buffer.length / 1024).toFixed(0)} KB`);
+    } catch (error) {
+      console.error(`  ${item.name} — FAILED: ${error.message}`);
+      // A rejected key, an empty quota or unaccepted model terms will say exactly
+      // the same thing for every remaining line. Stop and say what to do once.
+      if (/terms|quota|401|403|429/i.test(error.message) && !(groq && failure?.eleven && groqCanReadIt)) {
+        console.error('\nNothing more can be rendered until the voice account is usable. One of:');
+        console.error('  • ElevenLabs — top up or wait for the monthly reset, then run this again.');
+        console.error('  • Groq — accept the model terms once, then run this again:');
+        console.error('    https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english');
+        console.error('\nThe guide still works meanwhile; it speaks these lines live instead.');
+        stopped = true;
+      }
     }
   }
+
+  // Written even when incomplete: the app falls back to speaking any line that
+  // is not in here, so a partial render still helps rather than breaking.
+  writeFileSync(join(root, indexFile), JSON.stringify(index, null, 2) + '\n');
+
+  const bytes = Object.values(index)
+    .map((url) => join(root, 'public', url))
+    .filter(existsSync)
+    .reduce((n, f) => n + statSync(f).size, 0);
+
+  console.log(`${Object.keys(index).length}/${items.length} have audio (${rendered} rendered now, ${(bytes / 1048576).toFixed(1)} MB). Index: ${indexFile}`);
+  return Object.keys(index).length === items.length;
 }
 
-// Written even when incomplete: the app falls back to speaking any stop that is
-// not in here, so a partial render still helps rather than breaking the tour.
-writeFileSync(indexFile, JSON.stringify(index, null, 2) + '\n');
+let complete = true;
 
-const bytes = Object.values(index)
-  .map((url) => join(root, 'public', url))
-  .filter(existsSync)
-  .reduce((n, f) => n + statSync(f).size, 0);
-
-console.log(`\n${Object.keys(index).length}/${stops.length} stops have audio (${rendered} rendered now, ${(bytes / 1048576).toFixed(1)} MB).`);
-console.log(`Index written to src/chatbot/tourAudio.json.`);
-if (Object.keys(index).length < stops.length) {
-  console.log('Stops without audio are spoken live, as before.');
+if (!faqOnly) {
+  const stops = readTour();
+  if (stops.length === 0) {
+    console.error('Could not read any tour stops out of src/chatbot/tour.ts — has its shape changed?');
+    process.exit(1);
+  }
+  complete =
+    (await renderSet({
+      label: 'Tour',
+      items: stops.map((stop, i) => ({ key: stop.path, name: `stop-${String(i + 1).padStart(2, '0')}`, line: stop.line })),
+      dir: 'tour',
+      indexFile: 'src/chatbot/tourAudio.json',
+      publicPrefix: '/media/tour',
+    })) && complete;
 }
+
+if (!tourOnly) {
+  const answers = readAnswers();
+  complete =
+    (await renderSet({
+      label: 'Prepared answers',
+      items: answers.map((a) => ({ key: `${a.id}:${a.language}`, name: `${a.id}-${a.language}`, line: a.line })),
+      dir: 'faq',
+      indexFile: 'src/chatbot/faqAudio.json',
+      publicPrefix: '/media/faq',
+    })) && complete;
+}
+
+if (!complete) console.log('\nLines without audio are spoken live, as before.');
 console.log('Run `npm run offline:manifest` so the clips are cached for offline use.');

@@ -13,6 +13,7 @@
  * Both paths need the network. That is fine — the guide itself does too.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createBargeInDetector } from './bargeIn';
 
 const TTS_ENDPOINT = 'https://api.elevenlabs.io/v1/text-to-speech';
 const STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
@@ -140,6 +141,30 @@ const MAX_RECORDING_MS = 30000;
 /** Opening moments spent measuring the room rather than judging it. */
 const CALIBRATION_MS = 350;
 
+/**
+ * iOS and iPadOS switch the whole audio session into voice-chat mode while a
+ * microphone is open, which reroutes and quietens everything the page plays.
+ * Listening for an interruption there would make every answer quieter, so on
+ * those devices the guide is interrupted by tapping the mic instead.
+ */
+const IS_IOS =
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+const MIC_CONSTRAINTS: MediaStreamConstraints = {
+  // An experience centre is a hard room: other visitors, the app's own videos
+  // playing through the speakers, air conditioning. Letting the browser cancel
+  // the echo and lift the voice out of it is worth more than anything that can
+  // be done to the audio afterwards — without echo cancellation the guide
+  // transcribes its own answer.
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+};
+
 function elevenKey(): string | undefined {
   return import.meta.env.VITE_ELEVENLABS_API_KEY;
 }
@@ -193,6 +218,77 @@ function voiceId(): string {
   return import.meta.env.VITE_ELEVENLABS_VOICE_ID || DEFAULT_VOICE;
 }
 
+/**
+ * Renders one line with the best voice that will take it: ElevenLabs, then
+ * Groq's Orpheus. Resolves to the audio, or to null when neither can — the
+ * caller then reads the line with the browser's own voice.
+ */
+async function fetchVoice(line: string, signal: AbortSignal, live: () => boolean): Promise<Blob[] | null> {
+  const eleven = elevenKey();
+  const groq = import.meta.env.VITE_GROQ_API_KEY;
+
+  /** ElevenLabs. Best voice, and the only one that reads Devanagari. */
+  if (eleven && !disabled.eleven) {
+    try {
+      const response = await fetch(`${TTS_ENDPOINT}/${voiceId()}`, {
+        method: 'POST',
+        signal,
+        headers: { 'xi-api-key': eleven, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: line, model_id: TTS_MODEL }),
+      });
+      if (!response.ok) {
+        // 401 here is an exhausted quota as often as a bad key, and neither
+        // recovers before a reload.
+        if (response.status === 401 || response.status === 429) disabled.eleven = true;
+        throw new Error(`ElevenLabs ${response.status}`);
+      }
+      return [await response.blob()];
+    } catch (error) {
+      if (signal.aborted || !live()) return null;
+      console.warn('[guide] ElevenLabs unavailable', error);
+    }
+  }
+
+  /**
+   * Groq's Orpheus. English only, 200 characters a request — so Devanagari is
+   * left alone and longer lines are spoken in pieces.
+   */
+  if (groq && !disabled.groq && !/[ऀ-ॿ]/.test(line)) {
+    try {
+      const clips: Blob[] = [];
+      for (const piece of splitForSpeech(line)) {
+        const response = await fetch(GROQ_TTS_ENDPOINT, {
+          method: 'POST',
+          signal,
+          headers: { Authorization: `Bearer ${groq}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: GROQ_TTS_MODEL,
+            input: piece,
+            voice: import.meta.env.VITE_GROQ_TTS_VOICE || GROQ_DEFAULT_VOICE,
+            response_format: 'wav',
+          }),
+        });
+        if (!response.ok) {
+          // The model needs its terms accepted once, by the account owner, in
+          // the Groq console. Until then this is a permanent 400 and there is
+          // no point asking again this session.
+          if (response.status === 400 || response.status === 401) disabled.groq = true;
+          throw new Error(`Groq TTS ${response.status}`);
+        }
+        clips.push(await response.blob());
+        if (!live()) return null;
+      }
+      return clips;
+    } catch (error) {
+      if (signal.aborted || !live()) return null;
+      console.warn('[guide] Groq voice unavailable', error);
+    }
+  }
+
+  if (!signal.aborted && live()) console.warn('[guide] no natural voice available — using the browser voice');
+  return null;
+}
+
 /* ── Choosing the fallback voice ───────────────────────────────────────────
    The Web Speech API exposes no gender and no quality ranking, only a name and
    a BCP-47 tag, so the choice has to be made by name. These are the women's
@@ -208,7 +304,7 @@ const FEMALE_VOICES =
  * good — the answer is a natural voice, and this only decides which robot
  * speaks until there is one.
  */
-const LAST_RESORT_VOICES = /heera|ravi/i;
+const LAST_RESORT_VOICES = /heera|ravi/i;
 
 /** Named explicitly so a name that happens to contain one never slips through. */
 const MALE_VOICES = /david|mark|ravi|hemant|madhur|prabhat|daniel|alex|fred|george|male\b/i;
@@ -305,9 +401,45 @@ function browserSpeak(text: string, onEnd: () => void): void {
   // was still a touch fast to follow while looking at a screen.
   utterance.rate = 0.92;
   utterance.pitch = 1.15;
-  utterance.onend = onEnd;
-  utterance.onerror = onEnd;
+
+  // speechSynthesis does not always report that it has finished — with no
+  // usable voice installed, or when the engine is wedged, `end` simply never
+  // comes. Waiting on it forever left the guide "Speaking…" for good: the tour
+  // stuck on one screen, hands-free never reopening the mic, and the
+  // conversation never cleared for the next visitor. So the line is also given
+  // a generous deadline, from how long it should take to say.
+  let done = false;
+  const finish = (): void => {
+    if (done) return;
+    done = true;
+    window.clearTimeout(deadline);
+    onEnd();
+  };
+  const expectedMs = (text.length / 12) * 1000; // ~12 characters a second at this rate
+  const deadline = window.setTimeout(() => {
+    console.warn('[guide] the browser voice never said it had finished — moving on');
+    finish();
+  }, expectedMs * 2 + 4000);
+
+  utterance.onend = finish;
+  utterance.onerror = finish;
   window.speechSynthesis.speak(utterance);
+}
+
+export interface SpeechOptions {
+  /**
+   * Stop and listen if the visitor starts talking over this line. Only honoured
+   * where `canBargeIn` is true.
+   */
+  bargeIn?: boolean;
+}
+
+/** A reply that is spoken while it is still being written. */
+export interface SpeechStream {
+  /** Queue the next piece. It starts rendering now and plays after the last. */
+  push: (text: string) => void;
+  /** Nothing more is coming; `onEnd` fires once what is queued has been said. */
+  end: () => void;
 }
 
 export interface Speech {
@@ -329,11 +461,15 @@ export interface Speech {
   /** Speak a line. Cancels whatever is currently being said. `onEnd` fires when
    *  the line has finished, or immediately if it could not be spoken at all —
    *  the tour steps on it, so it must never simply not arrive. */
-  speak: (text: string, onEnd?: () => void) => void;
+  speak: (text: string, onEnd?: () => void, options?: SpeechOptions) => void;
+  /** Start a reply that arrives in pieces. Same contract as speak() for `onEnd`. */
+  beginSpeech: (onEnd?: () => void, options?: SpeechOptions) => SpeechStream;
   stopSpeaking: () => void;
   speaking: boolean;
   /** False only where the browser cannot record at all. */
   canListen: boolean;
+  /** Whether talking over the guide can interrupt it on this device. */
+  canBargeIn: boolean;
   listening: boolean;
   /** True while the recording is being transcribed. */
   transcribing: boolean;
@@ -353,11 +489,13 @@ export function useSpeech(
   const [transcribing, setTranscribing] = useState(false);
 
   const levelRef = useRef(0);
+  /** Raw playback loudness, for telling the guide's echo from the visitor. */
+  const playbackLevel = useRef(0);
   const levelFrame = useRef(0);
-  /** Settles the line currently being spoken; see speak(). */
+  /** Settles the line currently being spoken; see beginSpeech(). */
   const finishSpeaking = useRef<(() => void) | null>(null);
   /**
-   * Bumped on every speak(). Everything asynchronous inside a speak() checks it
+   * Bumped on every new line. Everything asynchronous inside one checks it
    * before making a sound, so a slow ElevenLabs response cannot start playing
    * over a line that replaced it — two voices at once is the one failure the
    * visitor cannot ignore.
@@ -367,12 +505,20 @@ export function useSpeech(
   const audio = useRef<HTMLAudioElement | null>(null);
   const objectUrl = useRef<string | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
+  /**
+   * True from the moment a recording is asked for until it is running.
+   * getUserMedia is asynchronous, and without this a second call in that gap —
+   * a tap on the mic whose stopSpeaking() fires the reply's "reopen the mic"
+   * callback — opened two recorders and sent the same question twice.
+   */
+  const opening = useRef(false);
   const chunks = useRef<Blob[]>([]);
   const ttsRequest = useRef<AbortController | null>(null);
 
   const canListen = useRef(
     typeof MediaRecorder !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia),
   ).current;
+  const canBargeIn = canListen && !IS_IOS && typeof AudioContext !== 'undefined';
 
   // Held in a ref so the recorder callbacks, wired up once per recording, always
   // reach the current handler rather than the one from an older render.
@@ -380,6 +526,8 @@ export function useSpeech(
   handler.current = onTranscript;
   const noSpeech = useRef(onNothingHeard);
   noSpeech.current = onNothingHeard;
+  /** startListening, reachable from beginSpeech which is defined before it. */
+  const listenRef = useRef<() => void>(() => {});
 
   /**
    * Feeds levelRef from whatever is currently making sound.
@@ -388,27 +536,32 @@ export function useSpeech(
    * <audio> element while the guide answers — so the orb in the panel is driven
    * by the actual waveform in both directions rather than a canned animation.
    */
-  const runMeter = useCallback((analyser: AnalyserNode, stillRunning: () => boolean) => {
-    const samples = new Float32Array(analyser.fftSize);
-    cancelAnimationFrame(levelFrame.current);
+  const runMeter = useCallback(
+    (analyser: AnalyserNode, stillRunning: () => boolean, raw?: React.MutableRefObject<number>) => {
+      const samples = new Float32Array(analyser.fftSize);
+      cancelAnimationFrame(levelFrame.current);
 
-    const tick = (): void => {
-      if (!stillRunning()) {
-        levelRef.current = 0;
-        return;
-      }
-      analyser.getFloatTimeDomainData(samples);
-      let sum = 0;
-      for (const sample of samples) sum += sample * sample;
-      const rms = Math.sqrt(sum / samples.length);
-      // Normalised against a level a person actually speaks at, then eased —
-      // raw RMS makes the orb twitch rather than breathe.
-      const target = Math.min(1, rms / 0.12);
-      levelRef.current += (target - levelRef.current) * 0.35;
+      const tick = (): void => {
+        if (!stillRunning()) {
+          levelRef.current = 0;
+          if (raw) raw.current = 0;
+          return;
+        }
+        analyser.getFloatTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) sum += sample * sample;
+        const rms = Math.sqrt(sum / samples.length);
+        if (raw) raw.current = rms;
+        // Normalised against a level a person actually speaks at, then eased —
+        // raw RMS makes the orb twitch rather than breathe.
+        const target = Math.min(1, rms / 0.12);
+        levelRef.current += (target - levelRef.current) * 0.35;
+        levelFrame.current = requestAnimationFrame(tick);
+      };
       levelFrame.current = requestAnimationFrame(tick);
-    };
-    levelFrame.current = requestAnimationFrame(tick);
-  }, []);
+    },
+    [],
+  );
 
   /** Routes the spoken reply through an analyser on its way to the speakers. */
   const meterPlayback = useCallback(
@@ -422,8 +575,13 @@ export function useSpeech(
         // reply would play silently.
         source.connect(analyser);
         analyser.connect(context.destination);
-        runMeter(analyser, () => !element.paused && !element.ended);
-        element.addEventListener('ended', () => void context.close().catch(() => {}), { once: true });
+        runMeter(analyser, () => !element.paused && !element.ended, playbackLevel);
+        // On pause as well as on end: a line cut off mid-clip never fires
+        // `ended`, and each one used to leave an AudioContext open behind it.
+        // Replies are now several clips each, and browsers cap open contexts.
+        const close = () => void context.close().catch(() => {});
+        element.addEventListener('pause', close, { once: true });
+        element.addEventListener('ended', close, { once: true });
       } catch {
         // No Web Audio, or the element is already wired to a context. The voice
         // still plays; only the visualisation is lost.
@@ -463,7 +621,13 @@ export function useSpeech(
    * rather than as several clips.
    */
   const playClips = useCallback(
-    (clips: Blob[], alive: () => boolean, onDone: () => void, onFail: () => void) => {
+    (
+      clips: Blob[],
+      alive: () => boolean,
+      onDone: () => void,
+      onFail: () => void,
+      onPlaying?: () => void,
+    ) => {
       let index = 0;
 
       const next = (): void => {
@@ -487,10 +651,13 @@ export function useSpeech(
           releaseAudio();
           onFail();
         };
-        void element.play().catch(() => {
-          releaseAudio();
-          onFail();
-        });
+        void element
+          .play()
+          .then(() => onPlaying?.())
+          .catch(() => {
+            releaseAudio();
+            onFail();
+          });
       };
 
       next();
@@ -498,126 +665,188 @@ export function useSpeech(
     [meterPlayback, releaseAudio],
   );
 
-  const speak = useCallback(
-    (text: string, onEnd?: () => void) => {
-      const line = text.trim();
-      if (!line) {
-        onEnd?.();
-        return;
-      }
-
+  /**
+   * One spoken turn, fed in pieces.
+   *
+   * Each piece starts rendering the moment it is pushed and plays as soon as
+   * the one before it has finished, so the first sentence of a reply is heard
+   * while the model is still writing the last. Renders run one after another
+   * rather than all at once: ElevenLabs answers a burst of parallel requests
+   * with 429, and a 429 switches it off for the rest of the session.
+   */
+  const beginSpeech = useCallback(
+    (onEnd?: () => void, options: SpeechOptions = {}): SpeechStream => {
       stopSpeaking();
-      setSpeaking(true);
 
       generation.current += 1;
       const mine = generation.current;
-      const alive = (): boolean => generation.current === mine;
+      const controller = new AbortController();
+      ttsRequest.current = controller;
+      const live = (): boolean => generation.current === mine && !controller.signal.aborted;
 
-      // Fires exactly once however this line ends — played out, failed, or
+      const monitor = { stop: () => {}, meterable: false, started: false };
+
+      // Fires exactly once however this turn ends — played out, failed, or
       // cancelled. The tour advances on it, so a path that forgets to call it
       // would strand the tour on one screen forever.
       let settled = false;
       const finish = (): void => {
         if (settled) return;
         settled = true;
+        monitor.stop();
+        if (ttsRequest.current === controller) ttsRequest.current = null;
         setSpeaking(false);
         onEnd?.();
       };
       finishSpeaking.current = finish;
 
-      const controller = new AbortController();
-      ttsRequest.current = controller;
-
-      // releaseAudio() before handing the line to another engine, every time:
-      // starting a second voice while the first element is still going is how a
-      // visitor ends up being read to by two people at once.
-      const fallToBrowser = (why: string, error?: unknown): void => {
-        if (!alive()) return;
-        releaseAudio();
-        console.warn(`[guide] ${why} — using the browser voice`, error ?? '');
-        browserSpeak(line, finish);
-      };
-
-      /** ElevenLabs. Best voice, and the only one that reads Devanagari. */
-      const viaElevenLabs = async (key: string): Promise<boolean> => {
-        const response = await fetch(`${TTS_ENDPOINT}/${voiceId()}`, {
-          method: 'POST',
-          signal: controller.signal,
-          headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: line, model_id: TTS_MODEL }),
-        });
-        if (!response.ok) {
-          // 401 here is an exhausted quota as often as a bad key, and neither
-          // recovers before a reload.
-          if (response.status === 401 || response.status === 429) disabled.eleven = true;
-          throw new Error(`ElevenLabs ${response.status}`);
-        }
-        const blob = await response.blob();
-        if (!alive()) return true;
-        playClips([blob], alive, finish, () => fallToBrowser('ElevenLabs audio would not play'));
-        return true;
-      };
-
       /**
-       * Groq's Orpheus. English only, 200 characters a request — so Devanagari
-       * is left alone and longer lines are spoken in pieces.
+       * Listens for the visitor talking over the guide. Opened on the first clip
+       * that actually plays — there is no echo to measure before that — and only
+       * judged while a metered clip is playing: the browser's own voice cannot
+       * be measured, and judging it blind would stop the guide on its own echo.
        */
-      const viaGroq = async (key: string): Promise<boolean> => {
-        if (/[\u0900-\u097F]/.test(line)) return false;
+      const startMonitor = (): void => {
+        if (monitor.started || !options.bargeIn || !canBargeIn || !live()) return;
+        monitor.started = true;
 
-        const pieces = splitForSpeech(line);
-        const clips: Blob[] = [];
-        for (const piece of pieces) {
-          const response = await fetch(GROQ_TTS_ENDPOINT, {
-            method: 'POST',
-            signal: controller.signal,
-            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: GROQ_TTS_MODEL,
-              input: piece,
-              voice: import.meta.env.VITE_GROQ_TTS_VOICE || GROQ_DEFAULT_VOICE,
-              response_format: 'wav',
-            }),
-          });
-          if (!response.ok) {
-            // The model needs its terms accepted once, by the account owner, in
-            // the Groq console. Until then this is a permanent 400 and there is
-            // no point asking again this session.
-            if (response.status === 400 || response.status === 401) disabled.groq = true;
-            throw new Error(`Groq TTS ${response.status}`);
+        void (async () => {
+          let stream: MediaStream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
+          } catch {
+            return; // No mic or no permission: tapping the mic still interrupts.
           }
-          clips.push(await response.blob());
-          if (!alive()) return true;
-        }
-        playClips(clips, alive, finish, () => fallToBrowser('Groq audio would not play'));
-        return true;
+          if (!live()) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+          }
+
+          const context = new AudioContext();
+          const analyser = context.createAnalyser();
+          analyser.fftSize = 1024;
+          context.createMediaStreamSource(stream).connect(analyser);
+          const samples = new Float32Array(analyser.fftSize);
+          const detector = createBargeInDetector();
+          let last = performance.now();
+
+          const release = (): void => {
+            window.clearInterval(timer);
+            stream.getTracks().forEach((track) => track.stop());
+            void context.close().catch(() => {});
+          };
+
+          const timer = window.setInterval(() => {
+            if (!live()) {
+              release();
+              return;
+            }
+            const now = performance.now();
+            const dt = now - last;
+            last = now;
+            if (!monitor.meterable) return;
+
+            analyser.getFloatTimeDomainData(samples);
+            let sum = 0;
+            for (const sample of samples) sum += sample * sample;
+            const mic = Math.sqrt(sum / samples.length);
+
+            if (detector.push(mic, playbackLevel.current, dt)) {
+              console.info(
+                `[guide] barge-in: the visitor spoke over the guide (mic ${mic.toFixed(3)}, playback ${playbackLevel.current.toFixed(3)})`,
+              );
+              release();
+              stopSpeaking();
+              listenRef.current();
+            }
+          }, 60);
+
+          monitor.stop = release;
+        })();
       };
 
-      void (async () => {
-        const eleven = elevenKey();
-        const groq = import.meta.env.VITE_GROQ_API_KEY;
+      const queue: { text: string; audio: Promise<Blob[] | null> }[] = [];
+      let rendering: Promise<unknown> = Promise.resolve();
+      let playing = false;
+      let ended = false;
 
-        try {
-          if (eleven && !disabled.eleven && (await viaElevenLabs(eleven))) return;
-        } catch (error) {
-          if (controller.signal.aborted || !alive()) return;
-          console.warn('[guide] ElevenLabs unavailable', error);
+      const render = (line: string): Promise<Blob[] | null> => {
+        const result = rendering.then(() => (live() ? fetchVoice(line, controller.signal, live) : null));
+        rendering = result.catch(() => null);
+        return result.catch(() => null);
+      };
+
+      const pump = (): void => {
+        if (!live() || playing) return;
+        const item = queue.shift();
+        if (!item) {
+          if (ended) finish();
+          return;
         }
+        playing = true;
+        const done = (): void => {
+          playing = false;
+          pump();
+        };
 
-        try {
-          if (groq && !disabled.groq && (await viaGroq(groq))) return;
-        } catch (error) {
-          if (controller.signal.aborted || !alive()) return;
-          console.warn('[guide] Groq voice unavailable', error);
-        }
+        void item.audio.then((clips) => {
+          if (!live()) return;
+          if (clips && clips.length > 0) {
+            monitor.meterable = true;
+            playClips(
+              clips,
+              live,
+              done,
+              () => {
+                // releaseAudio() before handing the line to another engine,
+                // every time: starting a second voice while the first element
+                // is still going is how a visitor ends up being read to by two
+                // people at once.
+                releaseAudio();
+                if (!live()) return;
+                console.warn('[guide] audio would not play — using the browser voice');
+                monitor.meterable = false;
+                browserSpeak(item.text, () => live() && done());
+              },
+              startMonitor,
+            );
+          } else {
+            monitor.meterable = false;
+            browserSpeak(item.text, () => live() && done());
+          }
+        });
+      };
 
-        if (controller.signal.aborted || !alive()) return;
-        fallToBrowser('no natural voice available');
-      })().finally(() => {
-        if (ttsRequest.current === controller) ttsRequest.current = null;
-      });
+      return {
+        push: (text: string) => {
+          const line = text.trim();
+          if (!line || ended || !live()) return;
+          setSpeaking(true);
+          queue.push({ text: line, audio: render(line) });
+          pump();
+        },
+        end: () => {
+          if (ended || settled) return;
+          ended = true;
+          if (!playing && queue.length === 0) finish();
+        },
+      };
     },
-    [playClips, releaseAudio, stopSpeaking],
+    [canBargeIn, playClips, releaseAudio, stopSpeaking],
+  );
+
+  const speak = useCallback(
+    (text: string, onEnd?: () => void, options?: SpeechOptions) => {
+      const line = text.trim();
+      if (!line) {
+        onEnd?.();
+        return;
+      }
+      const turn = beginSpeech(onEnd, options);
+      turn.push(line);
+      turn.end();
+    },
+    [beginSpeech],
   );
 
   /**
@@ -684,26 +913,18 @@ export function useSpeech(
 
   const startListening = useCallback(() => {
     if (!canListen) return;
+    if (opening.current || recorder.current?.state === 'recording') return;
+    opening.current = true;
     // Speaking and listening at once means the guide transcribes itself.
     stopSpeaking();
 
     void (async () => {
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          // An experience centre is a hard room: other visitors, the app's own
-          // videos playing through the speakers, air conditioning. Letting the
-          // browser cancel the echo and lift the voice out of it is worth more
-          // than anything that can be done to the audio afterwards — without
-          // echo cancellation the guide transcribes its own answer.
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
+        stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
       } catch {
         // Permission denied or no microphone. Typing still works.
+        opening.current = false;
         setListening(false);
         return;
       }
@@ -869,14 +1090,18 @@ export function useSpeech(
       };
 
       rec.start();
+      opening.current = false;
       setListening(true);
     })();
   }, [canListen, runMeter, stopSpeaking]);
+  listenRef.current = startListening;
 
   // A closed panel or a page change must not leave a voice talking to an empty
   // room, or the microphone light on.
   useEffect(
     () => () => {
+      // Retires every line in flight, which also shuts any interruption monitor.
+      generation.current += 1;
       cancelAnimationFrame(levelFrame.current);
       ttsRequest.current?.abort();
       window.speechSynthesis?.cancel();
@@ -890,10 +1115,12 @@ export function useSpeech(
   return {
     levelRef,
     speak,
+    beginSpeech,
     speakClip,
     stopSpeaking,
     speaking,
     canListen,
+    canBargeIn,
     listening,
     transcribing,
     startListening,

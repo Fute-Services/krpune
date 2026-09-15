@@ -228,22 +228,26 @@ export function knowledgeBase(pathname: string, topic = ''): string {
   return `## Every screen in this app\n\n${index}${detail}${related}${floors}`;
 }
 
-const FLOOR_TALK = /\b(floors?|carpet|sq\.? ?ft|square f(ee|oo)t|manzil|tower ?[12]|t[12])\b|\d+(st|nd|rd|th)\b/i;
+// `\b` does not work around Devanagari, so those words sit outside it.
+const FLOOR_TALK = /\b(floors?|carpet|sq\.? ?ft|square f(ee|oo)t|manzil|tower ?[12]|t[12])\b|\d+(st|nd|rd|th)\b|फ्लोर|मंज़?िल|कार्पेट|टावर/i;
 
 /**
- * Words a visitor uses for what each screen's detail covers — English and the
- * Hinglish that actually gets spoken at the kiosk. Matched as substrings of the
+ * Words a visitor uses for what each screen's detail covers — English, the
+ * Hinglish that actually gets spoken at the kiosk, and Devanagari, which is what
+ * Whisper writes when someone asks in Hindi. Without the Devanagari words
+ * "पार्किंग कितने लेवल की है?" matched nothing, the detail never reached the
+ * model, and the guide said it did not know. Matched as substrings of the
  * lower-cased question, so "parking" also catches "parkings".
  */
 const TOPICS: Record<string, string[]> = {
-  '/overview': ['overview', 'about the project', 'project kya', 'it park', 'grade a', 'mnc', 'companies', 'business'],
-  '/projectinfo': ['acre', 'leasable', 'million', 'leed', 'airport', 'railway', 'station', 'distance', 'door', 'dur ', 'highway', 'connectivity', 'road', 'access', 'design', 'size', 'kitna bada', 'total area'],
-  '/concept_summary': ['parking', 'tower', 'refuge', 'lobby', 'food court', 'retail', 'f&b', 'restaurant', 'shop', 'terrace', 'rooftop', 'structure', 'levels', 'garden', 'drop-off', 'entrance'],
-  '/sustainability': ['green', 'sustainab', 'water', 'energy', 'rain', 'eco', 'environment', 'electricity', 'chiller', 'glass', 'glazing', 'bijli', 'paani'],
-  '/gallery': ['photo', 'image', 'picture', 'pic', 'pool', 'swimming', 'tennis', 'sports', 'night', 'tasveer'],
-  '/location': ['hospital', 'school', 'mall', 'hotel', 'nearby', 'near', 'paas', 'drive', 'university', 'college', 'map', 'surrounding'],
-  '/project_details': ['inventory', 'refuge floor', 'carpet', 'unit plan', 'floor plan'],
-  '/fitout-plan': ['fit-out', 'fitout', 'workstation', 'meeting room', 'board room', 'office layout', 'seater', 'restroom', 'washroom'],
+  '/overview': ['overview', 'about the project', 'project kya', 'it park', 'grade a', 'mnc', 'companies', 'business', 'प्रोजेक्ट क्या', 'कंपनी', 'बिज़नेस', 'बिजनेस'],
+  '/projectinfo': ['acre', 'leasable', 'million', 'leed', 'airport', 'railway', 'station', 'distance', 'door', 'dur ', 'highway', 'connectivity', 'road', 'access', 'design', 'size', 'kitna bada', 'total area', 'एयरपोर्ट', 'हवाई', 'रेलवे', 'स्टेशन', 'दूर', 'हाईवे', 'सड़क', 'एकड़', 'कितना बड़ा', 'साइज'],
+  '/concept_summary': ['parking', 'tower', 'refuge', 'lobby', 'food court', 'retail', 'f&b', 'restaurant', 'shop', 'terrace', 'rooftop', 'structure', 'levels', 'garden', 'drop-off', 'entrance', 'पार्किंग', 'टावर', 'लॉबी', 'फूड कोर्ट', 'रिटेल', 'दुकान', 'रेस्टोरेंट', 'टैरेस', 'छत', 'गार्डन', 'लेवल', 'एंट्री'],
+  '/sustainability': ['green', 'sustainab', 'water', 'energy', 'rain', 'eco', 'environment', 'electricity', 'chiller', 'glass', 'glazing', 'bijli', 'paani', 'ग्रीन', 'पानी', 'बिजली', 'ऊर्जा', 'पर्यावरण', 'बारिश'],
+  '/gallery': ['photo', 'image', 'picture', 'pic', 'pool', 'swimming', 'tennis', 'sports', 'night', 'tasveer', 'फोटो', 'तस्वीर', 'स्विमिंग', 'पूल', 'टेनिस'],
+  '/location': ['hospital', 'school', 'mall', 'hotel', 'nearby', 'near', 'paas', 'drive', 'university', 'college', 'map', 'surrounding', 'अस्पताल', 'हॉस्पिटल', 'स्कूल', 'मॉल', 'होटल', 'पास', 'नज़दीक', 'नजदीक', 'यूनिवर्सिटी', 'कॉलेज', 'मैप'],
+  '/project_details': ['inventory', 'refuge floor', 'carpet', 'unit plan', 'floor plan', 'कार्पेट', 'इन्वेंटरी', 'फ्लोर प्लान'],
+  '/fitout-plan': ['fit-out', 'fitout', 'workstation', 'meeting room', 'board room', 'office layout', 'seater', 'restroom', 'washroom', 'वर्कस्टेशन', 'मीटिंग रूम', 'बोर्ड रूम', 'वॉशरूम'],
 };
 
 /** The two screens whose detail best matches what is being talked about. */

@@ -13,6 +13,7 @@
  * console, and treat rotating it as a redeploy.
  */
 import { knowledgeBase, PROJECT_NAME, pageFor } from './knowledge';
+import { replyLanguage, type Language } from './language';
 
 const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 
@@ -66,8 +67,9 @@ How to hold the conversation:
 - Short replies like "haan", "yes", "ok", "dikhao", "sure" answer the offer you just made — carry it out (for a screen, call show_page) instead of asking what they mean.
 - Follow-ups like "aur batao", "uska size?", "wahan kya hai", "and that one?" are about the last thing discussed, or the screen they are on. Continue from there with something you have not said yet.
 - Never repeat an earlier answer word for word. If they ask the same thing again, say it shorter and differently.
-- Questions reach you through a microphone and can arrive garbled or cut off. If you cannot tell what they meant, ask one short clarifying question instead of guessing. Never mention the microphone or transcription.
-- Thanks, small talk or goodbye get one warm line. Anything unrelated to the project gets a friendly one-line redirect back to it.
+- Questions reach you through a microphone and can arrive garbled or cut off. If the message is not a complete question you can understand — a fragment like "the uh podium what the" — do not answer it and do not describe anything. Reply with only one short question, under 15 words, asking what they would like to know. Never mention the microphone or transcription.
+- Never list more than three things in one reply. When there are more, name two or three and offer to show the screen that has the rest.
+- Thanks, small talk or goodbye get one warm line. Anything unrelated to the project (cricket, news, weather) gets a friendly one-line redirect back to the project — do not send those to the sales team, who only handle project questions.
 
 What you know:
 - Everything below, and nothing else. If you are asked something the brief does not cover — pricing, rent, availability, possession dates, who the tenants are, anything about other projects — say plainly that you do not have that and that the sales team can answer it. Never guess, and never fill a gap with something that sounds plausible.
@@ -80,6 +82,15 @@ Answer the visitor directly. Never write down your own thinking, never explain w
 function systemPrompt(pathname: string, topic: string): string {
   return `${HOUSE_RULES}\n\n${knowledgeBase(pathname, topic)}`;
 }
+
+// Which language to answer in is decided in code — see language.ts.
+const LANGUAGE_INSTRUCTION: Record<Language, string> = {
+  devanagari:
+    'The visitor is speaking Hindi. Write your entire reply in Hindi using Devanagari script — every sentence, including any offer or question at the end. Numbers may stay as digits.',
+  hinglish:
+    'The visitor is speaking Hinglish. Write your entire reply in Hinglish using English letters — every sentence, including any offer or question at the end. Do not switch to plain English or to Devanagari.',
+  english: 'The visitor is speaking English. Write your entire reply in English.',
+};
 
 /** Two rounds of streamed text, without "there.Here" where they meet. */
 function joinRounds(a: string, b: string): string {
@@ -190,6 +201,7 @@ export async function ask(options: AskOptions): Promise<string> {
   // What the conversation is about decides which extra detail goes in the
   // brief: this question, plus the previous one so "aur batao" keeps its topic.
   const lastQuestion = [...history].reverse().find((m) => m.role === 'user')?.content ?? '';
+  const language = LANGUAGE_INSTRUCTION[replyLanguage(question, history)];
   // Where they are goes in the system prompt, not in a second system message
   // part-way down the list. gpt-oss renders the conversation into a channel
   // format and an extra system turn mid-list is not something it is trained on.
@@ -198,10 +210,15 @@ export async function ask(options: AskOptions): Promise<string> {
       role: 'system',
       content: `${systemPrompt(pathname, `${lastQuestion} ${question}`)}\n\nThe visitor is looking at the ${
         here?.title ?? pathname
-      } screen right now.`,
+      } screen right now.\n\n${language}`,
     },
     ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: question },
+    // Repeated on the visitor's turn itself, on the wire only — the panel and
+    // the stored history keep the words they actually said. Said once at the
+    // top of a long system prompt the instruction held for the facts and then
+    // slipped on the closing offer ("…17 kilometre door hai. Want to see the
+    // connectivity map now?"); the last thing the model reads is what it keeps.
+    { role: 'user', content: `${question}\n\n(${language})` },
   ];
 
   // Raw across both rounds; what reaches the screen is always scrubbed.
@@ -218,11 +235,19 @@ export async function ask(options: AskOptions): Promise<string> {
 
   for (let round = 0; round < 2; round += 1) {
     const done = reply;
-    const { text, toolCalls } = await streamOnce(
-      messages,
-      (soFar) => onText(scrubMeta(joinRounds(done, soFar)).trim()),
-      signal,
-    );
+    const request = () =>
+      streamOnce(messages, (soFar) => onText(scrubMeta(joinRounds(done, soFar)).trim()), signal);
+    let { text, toolCalls } = await request();
+    // gpt-oss now and then ends a turn cleanly with nothing in it — finish
+    // "stop", no text, no tool call, a few dozen reasoning tokens. Traced on the
+    // live account, a Hinglish question about the airport came back that way
+    // once and answered fine the next time. Asking once more costs one request;
+    // not asking costs a visitor hearing "Sorry, I missed that" for a question
+    // that was heard perfectly well.
+    if (!text.trim() && toolCalls.length === 0 && !signal?.aborted) {
+      console.info('[guide] empty turn from the model, asking again');
+      ({ text, toolCalls } = await request());
+    }
     reply = joinRounds(reply, text);
 
     if (toolCalls.length === 0) return finish();
@@ -233,6 +258,25 @@ export async function ask(options: AskOptions): Promise<string> {
     if (toolCalls.some((call) => call.function.name === 'start_tour')) {
       onStartTour();
       return scrubMeta(reply).trim();
+    }
+
+    // The model often answers and navigates in the same breath. A second round
+    // then only restates it — "…9 acres ka hai. Want to see the floor-by-floor
+    // details?" after the first round had said both — and, reading an English
+    // tool result last, it drifts out of the visitor's language to do so. When
+    // the answer is already there, move the app and stop: it also saves the
+    // ~2,000 tokens that second request costs against the per-minute limit.
+    const alreadyAnswered = round === 0 && scrubMeta(text).trim().split(/\s+/).length >= 12;
+    if (alreadyAnswered) {
+      for (const call of toolCalls) {
+        try {
+          const page = pageFor(String((JSON.parse(call.function.arguments) as { path?: string }).path ?? ''));
+          if (page) onNavigate(page.path);
+        } catch {
+          // Malformed arguments: the answer stands, the app just stays put.
+        }
+      }
+      return finish();
     }
 
     messages.push({ role: 'assistant', content: text || null, tool_calls: toolCalls });
@@ -255,10 +299,15 @@ export async function ask(options: AskOptions): Promise<string> {
         role: 'tool',
         tool_call_id: call.id,
         // What is on the screen now, so the line that follows describes it from
-        // the brief rather than from a bare path.
+        // the brief rather than from a bare path — and a reminder that the rest
+        // of the brief still counts. Without it the model once moved to Location
+        // and then said the airport distance "is not on this screen", although
+        // the brief it had been given carried it.
+        // The language instruction goes here too: this is the last thing the
+        // model reads before the line it speaks.
         content: page
-          ? `The app is now showing the ${page.title} screen. ${page.detail ?? page.summary}`
-          : 'That screen does not exist. Use one of the routes listed in the brief.',
+          ? `The app is now showing the ${page.title} screen. On that screen: ${page.detail ?? page.summary} Everything else in the brief is still true — answer the visitor's question in full, even if the fact lives on a different screen. ${language}`
+          : `That screen does not exist. Use one of the routes listed in the brief. ${language}`,
       });
     }
   }
@@ -270,11 +319,16 @@ export async function ask(options: AskOptions): Promise<string> {
  * How long to wait out a rate limit before giving up and telling the visitor.
  *
  * The account allows 8,000 tokens a minute and the bucket refills continuously,
- * so a limit hit while someone is talking is usually over in a second or two —
+ * so a limit hit while someone is talking is usually over in a few seconds —
  * shorter than the pause they would expect anyway. Showing "a lot of people are
  * asking at once" for that is worse than simply waiting.
+ *
+ * Each request is about 2,000 tokens and a question that navigates makes two,
+ * so two such questions back to back empty the bucket. Measured against the
+ * live account, Groq then asked for 11–14 s; the old 12 s budget turned exactly
+ * that case into an error message. 20 s covers it.
  */
-const RATE_LIMIT_WAIT_MS = 12_000;
+const RATE_LIMIT_WAIT_MS = 20_000;
 
 /** One request. Returns the spoken text plus any tool calls the model made. */
 async function streamOnce(
@@ -412,7 +466,7 @@ async function readStream(
     }
   }
 
-    const known = new Set(['show_page', 'start_tour']);
+  const known = new Set(['show_page', 'start_tour']);
   return { text, toolCalls: [...calls.values()].filter((c) => known.has(c.function.name)) };
 }
 

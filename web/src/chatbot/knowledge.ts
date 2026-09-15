@@ -202,20 +202,64 @@ function floorAreaLines(): string {
  * anywhere and say what anything is), and the long detail only for the screen
  * the visitor is actually standing on.
  */
-export function knowledgeBase(pathname: string): string {
+export function knowledgeBase(pathname: string, topic = ''): string {
   const index = PAGES.map((p) => `${p.title} (${p.path}) — ${p.summary}`).join('\n');
 
   const here = pageFor(pathname);
   const detail = here?.detail ? `\n\n## About the screen they are on now: ${here.title}\n\n${here.detail}` : '';
 
+  // Detail for whatever the conversation is about, wherever the visitor is
+  // standing. Without this "airport kitna door hai" asked from Home was
+  // answered with "I don't have that" — the distance lives on Project Info, and
+  // the model was only ever shown the detail for the current screen.
+  const related = pagesAbout(topic)
+    .filter((p) => p.path !== here?.path)
+    .map((p) => `\n\n## Also relevant: ${p.title} (${p.path})\n\n${p.detail}`)
+    .join('');
+
   // The floor table is 22 lines of numbers. It is the whole point of the
-  // Inventory and floor-plan screens and noise everywhere else.
+  // Inventory and floor-plan screens, and of a question about a floor, and
+  // noise everywhere else.
   const floors =
-    pathname === '/project_details' || pathname.startsWith('/unitplan/')
-      ? `\n\n## Floor carpet areas (the table on screen)\n\n${floorAreaLines()}`
+    pathname === '/project_details' || pathname.startsWith('/unitplan/') || FLOOR_TALK.test(topic)
+      ? `\n\n## Floor carpet areas (the table on the Inventory screen)\n\n${floorAreaLines()}`
       : '';
 
-  return `## Every screen in this app\n\n${index}${detail}${floors}`;
+  return `## Every screen in this app\n\n${index}${detail}${related}${floors}`;
+}
+
+const FLOOR_TALK = /\b(floors?|carpet|sq\.? ?ft|square f(ee|oo)t|manzil|tower ?[12]|t[12])\b|\d+(st|nd|rd|th)\b/i;
+
+/**
+ * Words a visitor uses for what each screen's detail covers — English and the
+ * Hinglish that actually gets spoken at the kiosk. Matched as substrings of the
+ * lower-cased question, so "parking" also catches "parkings".
+ */
+const TOPICS: Record<string, string[]> = {
+  '/overview': ['overview', 'about the project', 'project kya', 'it park', 'grade a', 'mnc', 'companies', 'business'],
+  '/projectinfo': ['acre', 'leasable', 'million', 'leed', 'airport', 'railway', 'station', 'distance', 'door', 'dur ', 'highway', 'connectivity', 'road', 'access', 'design', 'size', 'kitna bada', 'total area'],
+  '/concept_summary': ['parking', 'tower', 'refuge', 'lobby', 'food court', 'retail', 'f&b', 'restaurant', 'shop', 'terrace', 'rooftop', 'structure', 'levels', 'garden', 'drop-off', 'entrance'],
+  '/sustainability': ['green', 'sustainab', 'water', 'energy', 'rain', 'eco', 'environment', 'electricity', 'chiller', 'glass', 'glazing', 'bijli', 'paani'],
+  '/gallery': ['photo', 'image', 'picture', 'pic', 'pool', 'swimming', 'tennis', 'sports', 'night', 'tasveer'],
+  '/location': ['hospital', 'school', 'mall', 'hotel', 'nearby', 'near', 'paas', 'drive', 'university', 'college', 'map', 'surrounding'],
+  '/project_details': ['inventory', 'refuge floor', 'carpet', 'unit plan', 'floor plan'],
+  '/fitout-plan': ['fit-out', 'fitout', 'workstation', 'meeting room', 'board room', 'office layout', 'seater', 'restroom', 'washroom'],
+};
+
+/** The two screens whose detail best matches what is being talked about. */
+function pagesAbout(topic: string): PageEntry[] {
+  const text = topic.toLowerCase();
+  if (!text.trim()) return [];
+
+  return PAGES.filter((p) => p.detail)
+    .map((p) => ({
+      page: p,
+      score: (TOPICS[p.path] ?? []).filter((word) => text.includes(word)).length,
+    }))
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map((s) => s.page);
 }
 
 export function pageFor(pathname: string): PageEntry | undefined {

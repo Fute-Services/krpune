@@ -24,6 +24,8 @@ export type ChatRole = 'user' | 'assistant';
 export interface ChatMessage {
   role: ChatRole;
   content: string;
+  /** An error shown to the visitor — never sent back to the model as history. */
+  failed?: boolean;
 }
 
 /** Wire shape — assistant turns can carry tool calls and no text. */
@@ -49,9 +51,23 @@ const HOUSE_RULES = `You are the host of the K Raheja Corp experience centre for
 Your job is to explain what is on screen and answer questions about the project, the way a good sales host would: warm, brief, and never pushy.
 
 How to speak:
-- Your replies are read aloud, so write for the ear. Two or three short sentences is the right length. No bullet points, no markdown, no emoji, no headings, no stage directions.
+- Your replies are read aloud, so write for the ear. Two to four short sentences, under about 60 words. No bullet points, no markdown, no emoji, no headings, no stage directions.
+- Write units the way they are said: "square feet", "kilometres", "minutes" — not "sq ft" or "km".
 - Match the visitor's language AND their script. If they write in Hinglish using English letters, reply in Hinglish using English letters — do not switch to Devanagari. If they write in Devanagari, reply in Devanagari. If they write in English, reply in English.
 - Numbers are the point of a sales conversation: quote them exactly as the brief gives them. Never round, never embellish.
+
+How to shape an answer:
+- First sentence answers the question directly. No warm-up: never open with "Sure", "Great question", "Certainly" or a restatement of what they asked.
+- Then the one or two facts from the brief that back it up.
+- Then, when it genuinely helps, one short offer of what next — a related screen or a natural follow-up — phrased as a question. Leave it out when the answer is complete on its own, and do not end every reply the same way.
+
+How to hold the conversation:
+- This is one continuous conversation. Greet only if they greet you, and never introduce yourself again once you have spoken.
+- Short replies like "haan", "yes", "ok", "dikhao", "sure" answer the offer you just made — carry it out (for a screen, call show_page) instead of asking what they mean.
+- Follow-ups like "aur batao", "uska size?", "wahan kya hai", "and that one?" are about the last thing discussed, or the screen they are on. Continue from there with something you have not said yet.
+- Never repeat an earlier answer word for word. If they ask the same thing again, say it shorter and differently.
+- Questions reach you through a microphone and can arrive garbled or cut off. If you cannot tell what they meant, ask one short clarifying question instead of guessing. Never mention the microphone or transcription.
+- Thanks, small talk or goodbye get one warm line. Anything unrelated to the project gets a friendly one-line redirect back to it.
 
 What you know:
 - Everything below, and nothing else. If you are asked something the brief does not cover — pricing, rent, availability, possession dates, who the tenants are, anything about other projects — say plainly that you do not have that and that the sales team can answer it. Never guess, and never fill a gap with something that sounds plausible.
@@ -60,9 +76,14 @@ What you know:
 
 Answer the visitor directly. Never write down your own thinking, never explain what you are about to do or why, never write notes to yourself, and never refer to the visitor in the third person. The visitor reads every word you produce.`;
 
-/** Rules first, then only the part of the brief this screen needs. */
-function systemPrompt(pathname: string): string {
-  return `${HOUSE_RULES}\n\n${knowledgeBase(pathname)}`;
+/** Rules first, then only the part of the brief this screen and topic need. */
+function systemPrompt(pathname: string, topic: string): string {
+  return `${HOUSE_RULES}\n\n${knowledgeBase(pathname, topic)}`;
+}
+
+/** Two rounds of streamed text, without "there.Here" where they meet. */
+function joinRounds(a: string, b: string): string {
+  return a.trim() && b.trim() ? `${a.trimEnd()} ${b.trimStart()}` : a + b;
 }
 
 const TOOLS = [
@@ -166,13 +187,16 @@ export async function ask(options: AskOptions): Promise<string> {
   const { history, question, pathname, onText, onNavigate, onStartTour, signal } = options;
 
   const here = pageFor(pathname);
+  // What the conversation is about decides which extra detail goes in the
+  // brief: this question, plus the previous one so "aur batao" keeps its topic.
+  const lastQuestion = [...history].reverse().find((m) => m.role === 'user')?.content ?? '';
   // Where they are goes in the system prompt, not in a second system message
   // part-way down the list. gpt-oss renders the conversation into a channel
   // format and an extra system turn mid-list is not something it is trained on.
   const messages: WireMessage[] = [
     {
       role: 'system',
-      content: `${systemPrompt(pathname)}\n\nThe visitor is looking at the ${
+      content: `${systemPrompt(pathname, `${lastQuestion} ${question}`)}\n\nThe visitor is looking at the ${
         here?.title ?? pathname
       } screen right now.`,
     },
@@ -182,17 +206,26 @@ export async function ask(options: AskOptions): Promise<string> {
 
   // Raw across both rounds; what reaches the screen is always scrubbed.
   let reply = '';
+  let shown: string | undefined;
+
+  const finish = (): string => {
+    const text = scrubMeta(reply).trim();
+    if (text) return text;
+    // A turn that only navigated, or said nothing usable, still has to say
+    // something — silence reads as the guide hanging.
+    return shown ? `Here is the ${shown} screen.` : 'Sorry, I missed that. Could you ask it once more?';
+  };
 
   for (let round = 0; round < 2; round += 1) {
     const done = reply;
     const { text, toolCalls } = await streamOnce(
       messages,
-      (soFar) => onText(scrubMeta(done + soFar).trim()),
+      (soFar) => onText(scrubMeta(joinRounds(done, soFar)).trim()),
       signal,
     );
-    reply += text;
+    reply = joinRounds(reply, text);
 
-    if (toolCalls.length === 0) return scrubMeta(reply).trim();
+    if (toolCalls.length === 0) return finish();
 
     // The tour takes over the panel entirely — it narrates every stop itself —
     // so this turn ends here rather than going round again for a line the tour
@@ -211,16 +244,26 @@ export async function ask(options: AskOptions): Promise<string> {
         // A malformed arguments blob is the model's mistake, not a crash: tell
         // it so in the tool result and let it recover on the next round.
       }
-      if (path) onNavigate(path);
+      // Only routes the app has. A made-up path would land the kiosk on a blank
+      // screen while the guide describes something that is not there.
+      const page = path ? pageFor(path) : undefined;
+      if (page) {
+        onNavigate(page.path);
+        shown = page.title;
+      }
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: path ? `The app is now showing ${path}.` : 'That page does not exist.',
+        // What is on the screen now, so the line that follows describes it from
+        // the brief rather than from a bare path.
+        content: page
+          ? `The app is now showing the ${page.title} screen. ${page.detail ?? page.summary}`
+          : 'That screen does not exist. Use one of the routes listed in the brief.',
       });
     }
   }
 
-  return scrubMeta(reply).trim();
+  return finish();
 }
 
 /**

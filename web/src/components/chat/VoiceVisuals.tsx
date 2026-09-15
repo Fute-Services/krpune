@@ -103,12 +103,16 @@ export function VoiceOrb({ levelRef, active, size = 40 }: Props & { size?: numbe
           mask: 'radial-gradient(circle, transparent 60%, #000 66%, #000 88%, transparent 96%)',
         }}
       />
+      {/* The core: a lit glass bead rather than a flat dot — a deep blue body,
+          a specular highlight up and to the left, and a hairline rim. */}
       <div
         ref={inner}
-        className="absolute inset-[30%] rounded-full"
+        className="absolute inset-[24%] rounded-full"
         style={{
-          background: 'linear-gradient(140deg, #dbeeff 0%, #90C7FF 35%, #2563eb 100%)',
-          boxShadow: '0 0 12px rgba(144,199,255,0.6), inset 0 1px 2px rgba(255,255,255,0.75)',
+          background:
+            'radial-gradient(circle at 32% 28%, #eaf5ff 0%, #90C7FF 26%, #2563eb 62%, #0b2f66 100%)',
+          boxShadow:
+            '0 0 14px rgba(144,199,255,0.55), inset 0 0 0 1px rgba(255,255,255,0.35), inset 0 -3px 6px rgba(5,16,31,0.45)',
         }}
       />
     </div>

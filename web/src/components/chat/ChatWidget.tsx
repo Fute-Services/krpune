@@ -104,7 +104,9 @@ export default function ChatWidget() {
 
       try {
         const reply = await ask({
-          history: messages.slice(-MAX_HISTORY),
+          // Errors were for the visitor, not the model — resending "the
+          // assistant failed" as something it said derails the next answer.
+          history: messages.filter((m) => !m.failed).slice(-MAX_HISTORY),
           question: text,
           pathname: here.current,
           // The whole reply so far, already cleaned — see scrubMeta.
@@ -125,7 +127,11 @@ export default function ChatWidget() {
         }
       } catch (error) {
         if (controller.signal.aborted) return;
-        setMessages((prev) => [...prev, { role: 'assistant', content: explainError(error) }]);
+        const explanation = explainError(error);
+        setMessages((prev) => [...prev, { role: 'assistant', content: explanation, failed: true }]);
+        // Someone talking hands-free is not looking at the panel; a failure
+        // that is only written down is a guide that went silent on them.
+        if (!muted) speech.speak(explanation);
       } finally {
         setPartial('');
         setStreaming(false);
@@ -260,21 +266,48 @@ export default function ChatWidget() {
             initial={{ opacity: 0, scale: 0.9, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 10 }}
+            whileHover={{ y: -2, scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 320, damping: 26 }}
             onClick={() => setOpen(true)}
             aria-label="Ask the guide"
-            className="group fixed bottom-6 right-6 z-[1900] flex items-center gap-3 h-14 pl-3 pr-5 rounded-full overflow-hidden text-left"
-            style={{ ...GLASS, boxShadow: '0 10px 34px rgba(0,0,0,0.45)' }}
+            className="group fixed bottom-6 right-6 z-[1900] flex items-center gap-3 h-[3.75rem] pl-2 pr-2 rounded-full overflow-hidden text-left"
+            style={{
+              ...GLASS,
+              border: '1.5px solid rgba(144,199,255,0.38)',
+              boxShadow:
+                '0 12px 36px rgba(0,0,0,0.5), 0 0 26px rgba(144,199,255,0.16), inset 0 1px 0 rgba(255,255,255,0.18)',
+            }}
           >
-            <Sheen radius={28} />
-            <VoiceOrb levelRef={speech.levelRef} active={busy} size={44} />
-            <span className="relative">
-              <span className="block text-[13px] font-semibold text-white leading-tight">
+            <Sheen radius={30} />
+            {/* The passing band of light — see krc-guide-shine in index.css. */}
+            <span
+              aria-hidden
+              className="krc-guide-shine pointer-events-none absolute inset-y-0 left-0 w-1/3"
+              style={{
+                background:
+                  'linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent)',
+                animation: 'krc-guide-shine 7s ease-in-out infinite',
+              }}
+            />
+            <VoiceOrb levelRef={speech.levelRef} active={busy} size={46} />
+            <span className="relative pr-1">
+              <span className="block text-[13.5px] font-semibold tracking-wide text-white leading-tight">
                 Ask the guide
               </span>
-              <span className="block text-[10px] text-white/55 leading-tight">
-                Tap and speak — or type
+              <span className="block text-[10.5px] text-[#90C7FF]/75 leading-tight mt-0.5">
+                Tap to talk, or type
               </span>
+            </span>
+            <span
+              aria-hidden
+              className="relative ml-1 w-9 h-9 rounded-full flex items-center justify-center text-white transition-transform group-hover:scale-105"
+              style={{
+                background: 'linear-gradient(140deg, #90C7FF 0%, #1C6CBC 100%)',
+                boxShadow: '0 3px 12px rgba(28,108,188,0.5), inset 0 1px 0 rgba(255,255,255,0.45)',
+              }}
+            >
+              <Mic size={15} className="text-[#05101f]" />
             </span>
           </motion.button>
         )}

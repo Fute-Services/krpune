@@ -171,6 +171,25 @@ code {
   }
 }
 
+/* A band of light that crosses the guide's launcher now and then — noticeable
+   from across the room, and transform-only so it stays on the compositor. */
+@keyframes krc-guide-shine {
+  0%,
+  70% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(320%) skewX(-20deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .krc-guide-shine {
+    animation: none !important;
+    opacity: 0;
+  }
+}
+
 @keyframes krc-guide-breathe {
   0%,
   100% {

@@ -19,6 +19,14 @@ const STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const GROQ_TTS_ENDPOINT = 'https://api.groq.com/openai/v1/audio/speech';
 
 /**
+ * How fast the guide talks, applied at playback so ElevenLabs, Groq and the
+ * pre-rendered tour clips all slow down together without re-rendering any of
+ * them. The browser keeps the pitch, so it sounds calmer rather than deeper.
+ * 1.0 was too quick for a visitor listening while looking at a screen.
+ */
+const SPEECH_RATE = 0.9;
+
+/**
  * The second natural voice, on the Groq key the guide already uses.
  *
  * It exists because the first one ran out: ElevenLabs' free tier is 10,000
@@ -293,9 +301,9 @@ function browserSpeak(text: string, onEnd: () => void): void {
   if (voice) utterance.voice = voice;
   // The old SAPI voices are slow and flat at their default rate — they read as
   // lifeless rather than calm. A little faster with the pitch nudged up is as
-  // close to lively as they get. 1.25 overshot, 1.12 was still quick; this is
-  // where it settled.
-  utterance.rate = 1.02;
+  // close to lively as they get. 1.25 overshot, 1.12 was still quick, and 1.02
+  // was still a touch fast to follow while looking at a screen.
+  utterance.rate = 0.92;
   utterance.pitch = 1.15;
   utterance.onend = onEnd;
   utterance.onerror = onEnd;
@@ -468,6 +476,7 @@ export function useSpeech(
         index += 1;
         objectUrl.current = url;
         const element = new Audio(url);
+        element.playbackRate = SPEECH_RATE;
         meterPlayback(element);
         audio.current = element;
         element.onended = () => {
@@ -642,6 +651,7 @@ export function useSpeech(
       finishSpeaking.current = finish;
 
       const element = new Audio(url);
+      element.playbackRate = SPEECH_RATE;
       meterPlayback(element);
       audio.current = element;
       element.onended = () => {

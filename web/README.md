@@ -16,6 +16,17 @@ npm run build  # production build → dist/
 npm run preview # serve the production build locally
 ```
 
+## Project guide (chatbot)
+
+The voice assistant in the bottom-right corner answers questions about the
+project, moves the app to the screen it is describing, and runs a narrated
+tour. It needs `VITE_GROQ_API_KEY` at build time (see `.env.example`); without
+it the launcher does not appear.
+
+Full documentation, covering how answers are built, the voice pipeline, the
+tour, changing what it knows, testing and troubleshooting, is in
+[`docs/project-guide.md`](docs/project-guide.md).
+
 ## Deployment (Vercel)
 
 Deployment is driven by `../vercel.json` at the repository root:

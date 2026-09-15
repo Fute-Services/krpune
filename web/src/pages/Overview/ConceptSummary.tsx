@@ -4,7 +4,6 @@ import bgImage from '../../assets/Overviewnew/Concept summarynew.png'
 import Logo from './Logo';
 import BackButton from './BackButton';
 
-
 const animationStyles = `
   /* Original Slide Up */
   @keyframes slideUpDrawer {
@@ -56,8 +55,6 @@ const animationStyles = `
     animation-delay: 400ms;
   }
 
-
-
   @keyframes slideCrossed {
     0% { 
       transform: translate(50px, 100px) rotate(3deg); 
@@ -78,7 +75,6 @@ const animationStyles = `
 
   .delay-200 { animation-delay: 200ms; }
   .delay-400 { animation-delay: 400ms; }
-
 
   @keyframes slideRightToLeft {
     0% { 
@@ -101,8 +97,6 @@ const animationStyles = `
     /* 1.5s gives it that slow, cinematic 'Archywave' feel */
     animation: slideRightToLeft 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
-
-
 
  @keyframes slideDownStraight {
     0% { 
@@ -161,14 +155,12 @@ export default function ConceptSummary() {
                 style={{ backgroundImage: `url(${bgImage})` }}
             >
 
-
                 <Logo />
                 <div className='absolute top-14 left-5 z-50'>
                     <BackButton to="/overview"/>
                 </div>
 
                 {/* Decorative Circle */}
-
 
                 {/* Building Image */}
                 <div className='absolute bottom-0 left-0  w-[73%] h-screen'>
@@ -190,12 +182,9 @@ export default function ConceptSummary() {
                 w-[38%]  h-[62vh] md:h-[64vh] lg:h-[80vh]
              overflow-y-auto pr-4 text-white">
 
-
                     <div className="space-y-1 2xl:space-y-5">
                         {conceptData.map((item, index) => (
                             <div key={index}
-                            //  className="animate-content" 
-                            //  style={{ animationDelay: `${0.5 + (index * 0.2)}s` }}
                             >
                                 <h2 className="text-[12px] md:text-[16px] md:font-semibold mb-1">{item.title}</h2>
                                 <p className="text-[9px] md:text-sm leading-wide opacity-90">{item.para}</p>

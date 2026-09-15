@@ -1,4 +1,3 @@
-// import image2d from '../assets/unit/floor1to17same.png';
 import image2d from '../assets/project_details/unitImagenew12D.png';
 import image3d from '../assets/unit/floor1to17.png'
 import mlcp1 from '../assets/project_details/parking1-2d.jpg'
@@ -7,7 +6,6 @@ import mlcp3 from '../assets/project_details/parking3-2d.jpg'
 import mlcp4 from '../assets/project_details/parking4-2d.jpg'
 import mlcp5 from '../assets/project_details/parking5-2d.jpg'
 import mlcp6 from '../assets/project_details/parking6-2d.jpg'
-// import mlcp11 from '../assets/project_details/parking floor1.png'
 import mlcp11 from '../assets/newFloor/parking floor1.png'
 import mlcp22 from '../assets/project_details/parking floor2.png'
 import mlcp33 from '../assets/project_details/parking floor3.png'
@@ -18,7 +16,6 @@ import mlcp66 from '../assets/project_details/parking floor6.png'
 import podium3d from '../assets/project_details/podium 1.png'
 import podium2d from '../assets/project_details/podium.jpg'
 
-// import upper3d from '../assets/project_details/upper3d.png'
 import upper3d from '../assets/newFloor/upper3d.png'
 import upper2d from '../assets/project_details/Upper 2d.jpg'
 
@@ -39,8 +36,6 @@ import floor15 from '../assets/flooroverlay/floor-15overlay.png'
 import floor16 from '../assets/flooroverlay/floor-16overlay.png'
 import floor17 from '../assets/flooroverlay/floor-17overlay.png'
 
-
-
 export const floorData = [
     {
         id: 1, name: "Floor-1",
@@ -52,9 +47,7 @@ export const floorData = [
         units: [
             {
                 id: 101, floorname: "Floor-1", polygon: "", tooltip: "",
-                // image3D: "https://res.cloudinary.com/db0f2ofgf/image/upload/v1776662835/floor1to17_cgmn7e.png",
                  image2D: image2d,
-                // image2D: "https://res.cloudinary.com/db0f2ofgf/image/upload/v1776662715/unitImagenew12D_nhwxh9.png",
                 image3D: image3d,
 
                 unitInformation: {
@@ -78,11 +71,6 @@ export const floorData = [
 
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
 
@@ -113,11 +101,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -147,11 +130,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -182,11 +160,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -217,11 +190,6 @@ export const floorData = [
                 ]
 
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -250,11 +218,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -284,11 +247,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -317,11 +275,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -351,11 +304,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -385,11 +333,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -419,11 +362,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -453,11 +391,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -487,11 +420,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -521,11 +449,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -556,11 +479,6 @@ export const floorData = [
                 ]
 
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -590,11 +508,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -624,11 +537,6 @@ export const floorData = [
                     { id: 10, name: "8) toilet" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
 
@@ -662,11 +570,6 @@ export const floorData = [
                     { id: 13, name: "Refuge balcony" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -699,11 +602,6 @@ export const floorData = [
                     { id: 13, name: "Refuge balcony" }
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
 
@@ -737,11 +635,6 @@ export const floorData = [
                     { id: 12, name: "Food Kiosk" },
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
 
@@ -773,11 +666,6 @@ export const floorData = [
 
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
 
@@ -808,11 +696,6 @@ export const floorData = [
                     { id: 10, name: "Electric Room" },
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
 
@@ -843,11 +726,6 @@ export const floorData = [
                     { id: 10, name: "Electric Room" },
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -877,11 +755,6 @@ export const floorData = [
                     { id: 10, name: "Electric Room" },
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
 
@@ -912,11 +785,6 @@ export const floorData = [
                     { id: 10, name: "Electric Room" },
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
     {
@@ -946,14 +814,7 @@ export const floorData = [
                     { id: 10, name: "Electric Room" },
                 ]
             },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
-            // { id: 101, floorname: "Floor-1", polygon: "", tooltip: "" },
         ],
     },
-
-
 
 ]

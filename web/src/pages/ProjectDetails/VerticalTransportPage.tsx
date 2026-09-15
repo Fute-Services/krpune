@@ -5,20 +5,7 @@ import mobilityBg from '../../assets/mobility/mobility.jpeg';
 import logo from "../../assets/logo.png";
 import R_vector from "../../assets/mobility/Vector-right.png";
 import L_vector from "../../assets/mobility/Vector-left.png";
-// import axios from 'axios';
 import { getTransport } from '@/data/offlineApi';
-
-// import V1 from "../../assets/transport/v1.mp4";
-// import V2 from "../../assets/transport/v2.mp4";
-// import V3 from "../../assets/transport/v3.mp4";
-// import V4 from "../../assets/transport/v4.mp4";
-
-// const sections = [
-//   { id: 1, label: "VT STRATEGY SECTION 01", video: V1 },
-//   { id: 2, label: "VT STRATEGY SECTION 02", video: V2 },
-//   { id: 3, label: "T1 & T2 VT STRATEGY",       video: V3 },
-//   // { id: 4, label: "T2 – VT STRATEGY",       video: V4 },
-// ];
 
 interface Transport {
 
@@ -27,58 +14,10 @@ interface Transport {
   video: string;
 }
 
-
 const VerticalTransportPage = () => {
-  // const [sections, setSections] = useState([]);
   const navigate = useNavigate();
-  // const [activeSection, setActiveSection] = useState(null);
   const [animating, setAnimating] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  // useEffect(() => {
-
-  //   const fetchData = async () => {
-  //     try {
-  //       const res = await axios.get(
-  //         "https://krahejabackend.onrender.com/api/transport"
-
-  //       );
-  //       setSections(res.data.data)
-  //       console.log("Transport" + res.data.data)
-  //     } catch (error) {
-  //       console.log("Error fetching data", error);
-  //     }
-  //   };
-  //   fetchData();
-
-
-  // }, []);
-
-  // useEffect(() => {
-  //   if (sections.length > 0) {
-  //     setActiveSection(sections[0]); // ✅ FIX
-  //   }
-  // }, [sections]);
-
-  // if (!activeSection) return <p>Loading...</p>;
-
-
-
-  // useEffect(() => {
-  //   if (videoRef.current) {
-  //     videoRef.current.load();
-  //     videoRef.current.play().catch(() => { });
-  //   }
-  // }, [activeSection]);
-
-  // const handleSelect = (section: typeof sections[0]) => {
-  //   if (section.id === activeSection.id) return;
-  //   setAnimating(true);
-  //   setTimeout(() => {
-  //     setActiveSection(section);
-  //     setAnimating(false);
-  //   }, 300);
-  // };
-
 
   const [sections, setSections] = useState<Transport[]>([]);
   const [activeSection, setActiveSection] = useState<Transport | null>(null);
@@ -89,7 +28,6 @@ const VerticalTransportPage = () => {
         const res = await getTransport();
 
         setSections(res.data.data);
-        // console.log("sssssssss" + JSON.stringify(res.data.data));
 
       } catch (error) {
         console.log("Error fetching data", error);

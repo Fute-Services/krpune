@@ -1,113 +1,3 @@
-// import { useState } from 'react';
-// import { useNavigate } from 'react-router-dom';
-// import BottomNavbar from '../Amenities/BottomNavbar';
-// import backImg from '../../assets/back.png'; // Ensure this path is correct
-
-// export default function LobbyReception() {
-//   const navigate = useNavigate();
-
-//   // 1. Define your specific VR links for THIS page
-//   const terraceLinks = [
-//     { label: "Reception Lobby", url: "https://kuula.co/share/Lfm7Q?logo=0&info=0&fs=1&vr=0&sd=1&thumbs=0&inst=0" },
-//     { label: "Lift Lobby", url: "https://kuula.co/share/Lfm7S?logo=0&info=0&fs=1&vr=0&sd=1&thumbs=0&inst=0" }, 
-//     // { label: "Infinity Pool", url: "https://kuula.co/share/collection/7McF2?logo=0" },
-//   ];
-
-//   // 2. State to track which VR link is currently active
-//   const [activeVrUrl, setActiveVrUrl] = useState(terraceLinks[0].url);
-
-//   return (
-//     <div className="relative w-full h-screen bg-black overflow-hidden">
-
-//       {/* FIXED BACK BUTTON */}
-//       <button
-//         className="absolute top-12 left-6 w-[44px] h-[44px] lg:w-[50px] lg:h-[50px] bg-white rounded-[30%] border border-white/20 flex items-center justify-center z-[1100] cursor-pointer shadow-xl hover:bg-gray-100 transition-colors"
-//         onClick={() => navigate("/amenities")} // Fixed the navigate call
-//       >
-//         <img
-//           src={backImg}
-//           alt="Back"
-//           className="w-5 h-5 lg:w-6 lg:h-6"
-//         />
-//       </button>
-
-//       {/* VR IFRAME - Plays inside this window and is interactive */}
-//       <div className="absolute inset-0 z-0">
-//         <iframe
-//           src={activeVrUrl}
-//           width="100%"
-//           height="100%"
-//           allowFullScreen
-//           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-//           className="border-none"
-//         ></iframe>
-//       </div>
-
-//       {/* DYNAMIC NAVBAR */}
-//       <BottomNavbar 
-//         links={terraceLinks} 
-//         onSelect={(url) => setActiveVrUrl(url)} 
-//         activeUrl={activeVrUrl} 
-//       />
-//     </div>
-//   );
-// }
-
-// import { useState } from 'react';
-// import { useNavigate } from 'react-router-dom';
-// import BottomNavbar from '../Amenities/BottomNavbar';
-// import backImg from '../../assets/back.png'; // Ensure this path is correct
-
-// export default function PodiumLevel() {
-//   const navigate = useNavigate();
-
-//   // 1. Define your specific VR links for THIS page
-//   const terraceLinks = [
-//     { label: "Podium 1", url: "https://kuula.co/share/Lfm7r?logo=0&info=0&fs=1&vr=0&sd=1&thumbs=0&inst=0" },
-//     { label: "Podium 2", url: "https://kuula.co/share/Lfm7t?logo=0&info=0&fs=1&vr=0&sd=1&thumbs=0&inst=0" }, 
-//     // { label: "Infinity Pool", url: "https://kuula.co/share/collection/7McF2?logo=0" },
-//   ];
-
-//   // 2. State to track which VR link is currently active
-//   const [activeVrUrl, setActiveVrUrl] = useState(terraceLinks[0].url);
-
-//   return (
-//     <div className="relative w-full h-screen bg-black overflow-hidden">
-
-//       {/* FIXED BACK BUTTON */}
-//       <button
-//         className="absolute top-12 left-6 w-[44px] h-[44px] lg:w-[50px] lg:h-[50px] bg-white rounded-[30%] border border-white/20 flex items-center justify-center z-[1100] cursor-pointer shadow-xl hover:bg-gray-100 transition-colors"
-//         onClick={() => navigate("/amenities")} // Fixed the navigate call
-//       >
-//         <img
-//           src={backImg}
-//           alt="Back"
-//           className="w-5 h-5 lg:w-6 lg:h-6"
-//         />
-//       </button>
-
-//       {/* VR IFRAME - Plays inside this window and is interactive */}
-//       <div className="absolute inset-0 z-0">
-//         <iframe
-//           src={activeVrUrl}
-//           width="100%"
-//           height="100%"
-//           allowFullScreen
-//           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-//           className="border-none"
-//         ></iframe>
-//       </div>
-
-//       {/* DYNAMIC NAVBAR */}
-//       <BottomNavbar 
-//         links={terraceLinks} 
-//         onSelect={(url) => setActiveVrUrl(url)} 
-//         activeUrl={activeVrUrl} 
-//       />
-//     </div>
-//   );
-// }
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavbar from './BottomNavbar';
@@ -148,7 +38,6 @@ export default function LobbyReception() {
     getScene: () => scenes.find(s => s.label === "Cafeteria")
   }
 ];
-
 
 const [activeScene, setActiveScene] = useState<Scene | null>(null);
 const [fade, setFade] = useState(false);
@@ -202,7 +91,6 @@ useEffect(() => {
     };
   
     const overlayContent = renderOverlayContent();
-
 
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden">

@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-// import zoningImg from '../../assets/mobility/zoneing.jpg';
-// import lowerZoneVid from '../../assets/mobility/lowerzone.mp4';
-// import upperZoneVid from '../../assets/mobility/upperzone.mp4';
 import mobilityBg from '../../assets/mobility/mobility.jpeg';
 import backImg from "../../assets/back.png";
 import logo from "../../assets/logo.png";

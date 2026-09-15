@@ -1,11 +1,3 @@
-// import { BrowserRouter, Routes, Route } from "react-router-dom";
-// import Sidebar from "./components/Sidebar/Sidebar";
-
-// import Home from "./pages/Home";
-// import Vr from "./pages/VR";
-// import ProjectDetails from "./pages/ProjectDetails";
-// import Amenities from "./pages/Amenities";
-// import Location from "./pages/Location";
 import { RouterProvider } from 'react-router-dom'
 import { router } from '@/app/router'
 

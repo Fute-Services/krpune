@@ -6,9 +6,7 @@ import {
 import { ProtectedRootLayout } from '@/app/RootLayout';
 import LoginPage from '@/pages/Login/LoginPage';
 import Home from '@/pages/Home/index';
-// import LocationPage from '@/pages/Location/index';
 import LocationMap from '@/pages/Location/index';
-// import VRPage from '@/pages/VR/index';
 import VRPage from '@/pages/VR/VRPage';
 import Amenities from '@/pages/Amenities/index';
 import ProjectDetailsPage from '@/pages/ProjectDetails/index';
@@ -30,17 +28,6 @@ import ProjectInfo from '@/pages/Overview/ProjectInfo';
 import Construction from '@/pages/Overview/Construction'
 import Fitout from '@/pages/ProjectDetails/Fitout';
 import CirculationPlan from '@/pages/ProjectDetails/CirculationPlan'; 
-// import { ToastContainer } from "react-toastify";
-// import "react-toastify/dist/ReactToastify.css";
-
-
-// import { Home } from '@/pages/Home';
-// import { Suspense, 
-// lazy
-//  } from 'react';
-
-// Lazy load heavy components for performance
-// const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 export const router = createHashRouter([
   // The only public route. Everything below renders through
@@ -52,52 +39,18 @@ export const router = createHashRouter([
   {
     path: '/',
     element: <ProtectedRootLayout />,
-    // errorElement: <ErrorPage />, // Catches bubbles-up errors
     children: [
       {
         index: true,
         element: <Home />,
       },
-      //   {
-      //     path: 'dashboard',
-      //     element: (
-      //       <Suspense fallback={<div>Loading Dashboard...</div>}>
-      //         <Dashboard />
-      //       </Suspense>
-      //     ),
-      //     // Advanced: Loader fetches data before the component even mounts
-      //     loader: async () => {
-      //       const res = await fetch('/api/user/stats');
-      //       if (res.status === 401) throw new Error("Unauthorized");
-      //       return res.json();
-      //     },
-      //   },
-      //   {
-      //     path: 'profile',
-      //     // Example of a Protected Route redirect
-      //     element: <ProtectedRoute element={<Profile />} />,
-      //   },
     ],
 
-
   },
-
-  // {
-  //   path: '/location',
-  //   element: <RootLayout/>,
-  //   // errorElement: <ErrorPage />, // Catches bubbles-up errors
-  //   children: [
-  //     {
-  //       index: true,
-  //       element: < LocationPage/>,
-  //     },
-  //   ]
-  // },
 
   {
     path: '/location',
     element: <ProtectedRootLayout />,
-    // errorElement: <ErrorPage />, // Catches bubbles-up errors
     children: [
       {
         index: true,
@@ -109,7 +62,6 @@ export const router = createHashRouter([
   {
     path: '/vr',
     element: <ProtectedRootLayout />,
-    // errorElement: <ErrorPage />, // Catches bubbles-up errors
     children: [
       {
         index: true,
@@ -120,7 +72,6 @@ export const router = createHashRouter([
   {
     path: '/construction',
     element: <ProtectedRootLayout />,
-    // errorElement: <ErrorPage />, // Catches bubbles-up errors
     children: [
       {
         index: true,
@@ -131,7 +82,6 @@ export const router = createHashRouter([
   {
     path: '/blueprint',
     element: <ProtectedRootLayout />,
-    // errorElement: <ErrorPage />, // Catches bubbles-up errors
     children: [
       {
         index: true,
@@ -140,12 +90,9 @@ export const router = createHashRouter([
     ]
   },
 
-
-
   {
     path: '/amenities',
     element: <ProtectedRootLayout />,
-    // errorElement: <ErrorPage />, // Catches bubbles-up errors
     children: [
       {
         index: true,
@@ -153,7 +100,6 @@ export const router = createHashRouter([
       },
     ]
   },
-
 
   {
     path: '/project_details',
@@ -250,18 +196,6 @@ export const router = createHashRouter([
     ]
   },
 
-  //  {
-  //   path: '/unitplan/:id',
-  //   element: <RootLayout/>,
-  //   // errorElement: <ErrorPage />, // Catches bubbles-up errors
-  //   children: [
-  //     {
-  //       index: true,
-  //       element: <UnitPlanPage/>,
-  //     },
-  //   ]
-  // },
-
   {
     path: '/',
     element: <ProtectedRootLayout />,
@@ -343,10 +277,3 @@ export const router = createHashRouter([
     ]
   },
 ]);
-
-
-
-
-
-
-

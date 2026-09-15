@@ -2,7 +2,6 @@ import { useState } from 'react';
 import bgImage from '../../assets/Overviewnew/About us.png';
 import backImg from '../../assets/back.png';
 import { useNavigate } from 'react-router-dom';
-// import RightButton from './RightButton';
 import Logo from './Logo';
 import BottomNavbar from './BottomNavbar';
 import { FaAngleUp, FaAngleDown } from "react-icons/fa";
@@ -28,16 +27,12 @@ export default function Overview() {
              
                 left-3 sm:left-4 md:left-6 lg:left-8  2xl:left-12
 
-              
                 top-1/2 -translate-y-1/2
                 landscape:top-[48%]
                 md:landscape:top-1/2
                 
-
-                
                 w-[55vw] sm:w-[48vw] md:w-[420px] lg:w-[460px] xl:w-[500px] 2xl:w-[560px]
 
-              
                 p-1 sm:p-4 md:p-6 lg:p-8 2xl:p-10
 
                 rounded-2xl text-white overflow-hidden
